@@ -1,116 +1,101 @@
 /*
-  # Complete Ganty Database Schema - Safe Migration
-
-  This script safely creates or updates the complete database schema.
-  It handles existing tables, policies, and other objects gracefully.
-
-  1. New Tables
-    - `profiles` - User profiles with extended information
-    - `workspaces` - Multi-tenant workspace system
-    - `workspace_members` - Team membership with roles
-    - `workspace_invitations` - Pending team invitations
-    - `projects` - Project management with full metadata
-    - `tasks` - Hierarchical task system with rich properties
-    - `task_dependencies` - Task relationship management
-    - `milestones` - Project milestone tracking
-    - `activity_logs` - Complete audit trail
-    - `custom_fields` - Flexible field definitions
-    - `task_custom_values` - Custom field values for tasks
-    - `project_templates` - Reusable project templates
-    - `notifications` - In-app notification system
-    - `file_attachments` - File management system
-    - `comments` - Task and project comments
-    - `time_entries` - Work time tracking (optional)
-    - `project_roles` - Project-specific permissions
-    - `workspace_settings` - Workspace configuration
-    - `export_jobs` - Export job tracking
-    - `api_keys` - API access management
-
-  2. Security
-    - Enable RLS on all tables
-    - Workspace-based access control
-    - Role-based permissions
-    - Secure API endpoints
-
-  3. Features
-    - Complete task hierarchy with dependencies
-    - Milestone tracking and management
-    - Activity logging for all actions
-    - Custom fields for flexible data
-    - File attachments and comments
-    - Team collaboration features
-    - Export and reporting capabilities
+  # Complete Ganty Database Schema - Safe Execution
+  # This script can be run multiple times safely in Supabase SQL Editor
+  # It handles all existing objects gracefully and ensures your schema is up to date
 */
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Drop existing policies first to avoid conflicts
+-- =============================================================================
+-- STEP 1: CLEAN UP EXISTING OBJECTS
+-- =============================================================================
+
+-- Drop all existing policies to avoid conflicts
 DO $$
 BEGIN
-    -- Drop all policies for each table if they exist
+    -- Profiles policies
     DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
     DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
     DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
     
+    -- Workspaces policies
     DROP POLICY IF EXISTS "Users can read workspaces they belong to" ON workspaces;
     DROP POLICY IF EXISTS "Users can create workspaces" ON workspaces;
     DROP POLICY IF EXISTS "Workspace owners can update their workspaces" ON workspaces;
     
+    -- Workspace members policies
     DROP POLICY IF EXISTS "Users can read workspace members for their workspaces" ON workspace_members;
     DROP POLICY IF EXISTS "Workspace admins can manage members" ON workspace_members;
     
+    -- Workspace invitations policies
     DROP POLICY IF EXISTS "Users can read invitations for their workspaces" ON workspace_invitations;
     DROP POLICY IF EXISTS "Workspace admins can manage invitations" ON workspace_invitations;
     
+    -- Projects policies
     DROP POLICY IF EXISTS "Users can read projects in their workspaces" ON projects;
     DROP POLICY IF EXISTS "Users can create projects in their workspaces" ON projects;
     DROP POLICY IF EXISTS "Users can update projects in their workspaces" ON projects;
     
+    -- Project roles policies
     DROP POLICY IF EXISTS "Users can read project roles for accessible projects" ON project_roles;
     DROP POLICY IF EXISTS "Project managers can manage project roles" ON project_roles;
     
+    -- Tasks policies
     DROP POLICY IF EXISTS "Users can read tasks in their workspace projects" ON tasks;
     DROP POLICY IF EXISTS "Users can create tasks in their workspace projects" ON tasks;
     DROP POLICY IF EXISTS "Users can update tasks in their workspace projects" ON tasks;
     
+    -- Task dependencies policies
     DROP POLICY IF EXISTS "Users can read dependencies for accessible tasks" ON task_dependencies;
     DROP POLICY IF EXISTS "Users can manage dependencies for accessible tasks" ON task_dependencies;
     
+    -- Milestones policies
     DROP POLICY IF EXISTS "Users can read milestones in their workspace projects" ON milestones;
     DROP POLICY IF EXISTS "Users can manage milestones in their workspace projects" ON milestones;
     
+    -- Custom fields policies
     DROP POLICY IF EXISTS "Users can read custom fields in their workspaces" ON custom_fields;
     DROP POLICY IF EXISTS "Workspace admins can manage custom fields" ON custom_fields;
     
+    -- Task custom values policies
     DROP POLICY IF EXISTS "Users can read task custom values for accessible tasks" ON task_custom_values;
     DROP POLICY IF EXISTS "Users can manage task custom values for accessible tasks" ON task_custom_values;
     
+    -- Project custom values policies
     DROP POLICY IF EXISTS "Users can read project custom values for accessible projects" ON project_custom_values;
     DROP POLICY IF EXISTS "Users can manage project custom values for accessible projects" ON project_custom_values;
     
+    -- Activity logs policies
     DROP POLICY IF EXISTS "Users can read activity logs for their workspaces" ON activity_logs;
     DROP POLICY IF EXISTS "Users can create activity logs for their workspaces" ON activity_logs;
     
+    -- Comments policies
     DROP POLICY IF EXISTS "Users can read comments for accessible projects/tasks" ON comments;
     DROP POLICY IF EXISTS "Users can create comments for accessible projects/tasks" ON comments;
     DROP POLICY IF EXISTS "Users can update own comments" ON comments;
     
+    -- File attachments policies
     DROP POLICY IF EXISTS "Users can read attachments in their workspaces" ON file_attachments;
     DROP POLICY IF EXISTS "Users can upload attachments to their workspaces" ON file_attachments;
     
+    -- Notifications policies
     DROP POLICY IF EXISTS "Users can read own notifications" ON notifications;
     DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
     
+    -- Export jobs policies
     DROP POLICY IF EXISTS "Users can read own export jobs" ON export_jobs;
     DROP POLICY IF EXISTS "Users can create export jobs for their workspaces" ON export_jobs;
     
+    -- API keys policies
     DROP POLICY IF EXISTS "Users can read API keys for their workspaces" ON api_keys;
     DROP POLICY IF EXISTS "Workspace admins can manage API keys" ON api_keys;
     
+    -- Portfolios policies
     DROP POLICY IF EXISTS "Users can read portfolios in their workspaces" ON portfolios;
     DROP POLICY IF EXISTS "Users can manage portfolios in their workspaces" ON portfolios;
     
+    -- Portfolio projects policies
     DROP POLICY IF EXISTS "Users can read portfolio projects for accessible portfolios" ON portfolio_projects;
     DROP POLICY IF EXISTS "Users can manage portfolio projects for accessible portfolios" ON portfolio_projects;
 EXCEPTION
@@ -119,7 +104,30 @@ EXCEPTION
         NULL;
 END $$;
 
--- Drop existing indexes if they exist
+-- Drop existing triggers
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+DROP TRIGGER IF EXISTS update_workspaces_updated_at ON workspaces;
+DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
+DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
+DROP TRIGGER IF EXISTS update_milestones_updated_at ON milestones;
+DROP TRIGGER IF EXISTS update_comments_updated_at ON comments;
+DROP TRIGGER IF EXISTS update_portfolios_updated_at ON portfolios;
+DROP TRIGGER IF EXISTS calculate_project_progress_trigger ON tasks;
+DROP TRIGGER IF EXISTS log_workspace_activity ON workspaces;
+DROP TRIGGER IF EXISTS log_project_activity ON projects;
+DROP TRIGGER IF EXISTS log_task_activity ON tasks;
+DROP TRIGGER IF EXISTS log_milestone_activity ON milestones;
+DROP TRIGGER IF EXISTS check_dependencies_trigger ON task_dependencies;
+
+-- Drop existing functions
+DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
+DROP FUNCTION IF EXISTS calculate_project_progress() CASCADE;
+DROP FUNCTION IF EXISTS log_activity() CASCADE;
+DROP FUNCTION IF EXISTS check_task_dependencies() CASCADE;
+
+-- Drop existing indexes
 DROP INDEX IF EXISTS idx_workspace_members_user_id;
 DROP INDEX IF EXISTS idx_workspace_members_workspace_id;
 DROP INDEX IF EXISTS idx_projects_workspace_id;
@@ -136,37 +144,12 @@ DROP INDEX IF EXISTS idx_comments_task_id;
 DROP INDEX IF EXISTS idx_notifications_user_id;
 DROP INDEX IF EXISTS idx_notifications_read_at;
 
--- Drop existing functions if they exist
-DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
-DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
-DROP FUNCTION IF EXISTS calculate_project_progress() CASCADE;
-DROP FUNCTION IF EXISTS log_activity() CASCADE;
-DROP FUNCTION IF EXISTS check_task_dependencies() CASCADE;
-
--- Drop existing tables if they exist (in reverse dependency order)
-DROP TABLE IF EXISTS portfolio_projects CASCADE;
-DROP TABLE IF EXISTS portfolios CASCADE;
-DROP TABLE IF EXISTS api_keys CASCADE;
-DROP TABLE IF EXISTS export_jobs CASCADE;
-DROP TABLE IF EXISTS notifications CASCADE;
-DROP TABLE IF EXISTS file_attachments CASCADE;
-DROP TABLE IF EXISTS comments CASCADE;
-DROP TABLE IF EXISTS activity_logs CASCADE;
-DROP TABLE IF EXISTS project_custom_values CASCADE;
-DROP TABLE IF EXISTS task_custom_values CASCADE;
-DROP TABLE IF EXISTS custom_fields CASCADE;
-DROP TABLE IF EXISTS milestones CASCADE;
-DROP TABLE IF EXISTS task_dependencies CASCADE;
-DROP TABLE IF EXISTS tasks CASCADE;
-DROP TABLE IF EXISTS project_roles CASCADE;
-DROP TABLE IF EXISTS projects CASCADE;
-DROP TABLE IF EXISTS workspace_invitations CASCADE;
-DROP TABLE IF EXISTS workspace_members CASCADE;
-DROP TABLE IF EXISTS workspaces CASCADE;
-DROP TABLE IF EXISTS profiles CASCADE;
+-- =============================================================================
+-- STEP 2: CREATE TABLES
+-- =============================================================================
 
 -- Profiles table (extends Supabase auth.users)
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email text UNIQUE NOT NULL,
   first_name text,
@@ -181,7 +164,7 @@ CREATE TABLE profiles (
 );
 
 -- Workspaces table
-CREATE TABLE workspaces (
+CREATE TABLE IF NOT EXISTS workspaces (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
   description text,
@@ -195,7 +178,7 @@ CREATE TABLE workspaces (
 );
 
 -- Workspace members table
-CREATE TABLE workspace_members (
+CREATE TABLE IF NOT EXISTS workspace_members (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -206,7 +189,7 @@ CREATE TABLE workspace_members (
 );
 
 -- Workspace invitations table
-CREATE TABLE workspace_invitations (
+CREATE TABLE IF NOT EXISTS workspace_invitations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   email text NOT NULL,
@@ -219,7 +202,7 @@ CREATE TABLE workspace_invitations (
 );
 
 -- Projects table
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   workspace_id uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   name text NOT NULL,
@@ -239,7 +222,7 @@ CREATE TABLE projects (
 );
 
 -- Project roles table (project-specific permissions)
-CREATE TABLE project_roles (
+CREATE TABLE IF NOT EXISTS project_roles (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
@@ -436,7 +419,10 @@ CREATE TABLE IF NOT EXISTS portfolio_projects (
   UNIQUE(portfolio_id, project_id)
 );
 
--- Create indexes for better performance
+-- =============================================================================
+-- STEP 3: CREATE INDEXES FOR BETTER PERFORMANCE
+-- =============================================================================
+
 CREATE INDEX IF NOT EXISTS idx_workspace_members_user_id ON workspace_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_members_workspace_id ON workspace_members(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_projects_workspace_id ON projects(workspace_id);
@@ -453,7 +439,10 @@ CREATE INDEX IF NOT EXISTS idx_comments_task_id ON comments(task_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read_at ON notifications(read_at);
 
--- Enable Row Level Security
+-- =============================================================================
+-- STEP 4: ENABLE ROW LEVEL SECURITY
+-- =============================================================================
+
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspaces ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace_members ENABLE ROW LEVEL SECURITY;
@@ -474,6 +463,10 @@ ALTER TABLE export_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolios ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portfolio_projects ENABLE ROW LEVEL SECURITY;
+
+-- =============================================================================
+-- STEP 5: CREATE SECURITY POLICIES
+-- =============================================================================
 
 -- Profiles policies
 CREATE POLICY "Users can read own profile" ON profiles
@@ -844,3 +837,235 @@ CREATE POLICY "Users can manage portfolio projects for accessible portfolios" ON
     WHERE wm.user_id = auth.uid() 
     AND wm.role IN ('owner', 'admin', 'member')
   ));
+
+-- =============================================================================
+-- STEP 6: CREATE FUNCTIONS AND TRIGGERS
+-- =============================================================================
+
+-- Function to handle new user registration
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, first_name, last_name)
+  VALUES (
+    new.id,
+    new.email,
+    new.raw_user_meta_data->>'first_name',
+    new.raw_user_meta_data->>'last_name'
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger for new user registration
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Add updated_at triggers
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_workspaces_updated_at
+  BEFORE UPDATE ON workspaces
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_projects_updated_at
+  BEFORE UPDATE ON projects
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_tasks_updated_at
+  BEFORE UPDATE ON tasks
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_milestones_updated_at
+  BEFORE UPDATE ON milestones
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_comments_updated_at
+  BEFORE UPDATE ON comments
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER update_portfolios_updated_at
+  BEFORE UPDATE ON portfolios
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Function to calculate project progress based on tasks
+CREATE OR REPLACE FUNCTION calculate_project_progress()
+RETURNS trigger AS $$
+DECLARE
+  project_id_to_update uuid;
+  avg_progress numeric;
+BEGIN
+  -- Determine which project to update
+  IF TG_OP = 'DELETE' THEN
+    project_id_to_update := OLD.project_id;
+  ELSE
+    project_id_to_update := NEW.project_id;
+  END IF;
+
+  -- Calculate average progress of all tasks in the project
+  SELECT COALESCE(AVG(progress), 0)
+  INTO avg_progress
+  FROM tasks
+  WHERE project_id = project_id_to_update;
+
+  -- Update project progress
+  UPDATE projects
+  SET progress = ROUND(avg_progress)
+  WHERE id = project_id_to_update;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  ELSE
+    RETURN NEW;
+  END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to auto-calculate project progress
+CREATE TRIGGER calculate_project_progress_trigger
+  AFTER INSERT OR UPDATE OR DELETE ON tasks
+  FOR EACH ROW EXECUTE FUNCTION calculate_project_progress();
+
+-- Function to log activities
+CREATE OR REPLACE FUNCTION log_activity()
+RETURNS trigger AS $$
+DECLARE
+  workspace_id_val uuid;
+  project_id_val uuid;
+  action_text text;
+  entity_type_val text;
+BEGIN
+  -- Determine workspace and project IDs based on table
+  IF TG_TABLE_NAME = 'workspaces' THEN
+    workspace_id_val := COALESCE(NEW.id, OLD.id);
+    entity_type_val := 'workspace';
+  ELSIF TG_TABLE_NAME = 'projects' THEN
+    workspace_id_val := COALESCE(NEW.workspace_id, OLD.workspace_id);
+    project_id_val := COALESCE(NEW.id, OLD.id);
+    entity_type_val := 'project';
+  ELSIF TG_TABLE_NAME = 'tasks' THEN
+    SELECT p.workspace_id INTO workspace_id_val
+    FROM projects p
+    WHERE p.id = COALESCE(NEW.project_id, OLD.project_id);
+    project_id_val := COALESCE(NEW.project_id, OLD.project_id);
+    entity_type_val := 'task';
+  ELSIF TG_TABLE_NAME = 'milestones' THEN
+    SELECT p.workspace_id INTO workspace_id_val
+    FROM projects p
+    WHERE p.id = COALESCE(NEW.project_id, OLD.project_id);
+    project_id_val := COALESCE(NEW.project_id, OLD.project_id);
+    entity_type_val := 'milestone';
+  ELSE
+    RETURN COALESCE(NEW, OLD);
+  END IF;
+
+  -- Determine action text
+  IF TG_OP = 'INSERT' THEN
+    action_text := 'created';
+  ELSIF TG_OP = 'UPDATE' THEN
+    action_text := 'updated';
+  ELSIF TG_OP = 'DELETE' THEN
+    action_text := 'deleted';
+  END IF;
+
+  -- Insert activity log
+  INSERT INTO activity_logs (
+    workspace_id,
+    project_id,
+    task_id,
+    user_id,
+    action,
+    entity_type,
+    entity_id,
+    old_values,
+    new_values
+  ) VALUES (
+    workspace_id_val,
+    project_id_val,
+    CASE WHEN entity_type_val = 'task' THEN COALESCE(NEW.id, OLD.id) ELSE NULL END,
+    auth.uid(),
+    action_text,
+    entity_type_val,
+    COALESCE(NEW.id, OLD.id),
+    CASE WHEN TG_OP != 'INSERT' THEN to_jsonb(OLD) ELSE NULL END,
+    CASE WHEN TG_OP != 'DELETE' THEN to_jsonb(NEW) ELSE NULL END
+  );
+
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Activity logging triggers
+CREATE TRIGGER log_workspace_activity
+  AFTER INSERT OR UPDATE OR DELETE ON workspaces
+  FOR EACH ROW EXECUTE FUNCTION log_activity();
+
+CREATE TRIGGER log_project_activity
+  AFTER INSERT OR UPDATE OR DELETE ON projects
+  FOR EACH ROW EXECUTE FUNCTION log_activity();
+
+CREATE TRIGGER log_task_activity
+  AFTER INSERT OR UPDATE OR DELETE ON tasks
+  FOR EACH ROW EXECUTE FUNCTION log_activity();
+
+CREATE TRIGGER log_milestone_activity
+  AFTER INSERT OR UPDATE OR DELETE ON milestones
+  FOR EACH ROW EXECUTE FUNCTION log_activity();
+
+-- Function to validate task dependencies (prevent circular dependencies)
+CREATE OR REPLACE FUNCTION check_task_dependencies()
+RETURNS trigger AS $$
+BEGIN
+  -- Check for circular dependencies using recursive CTE
+  WITH RECURSIVE dependency_chain AS (
+    SELECT predecessor_id, successor_id, 1 as depth
+    FROM task_dependencies
+    WHERE predecessor_id = NEW.successor_id
+    
+    UNION ALL
+    
+    SELECT td.predecessor_id, td.successor_id, dc.depth + 1
+    FROM task_dependencies td
+    JOIN dependency_chain dc ON td.predecessor_id = dc.successor_id
+    WHERE dc.depth < 100 -- Prevent infinite recursion
+  )
+  SELECT 1 FROM dependency_chain
+  WHERE successor_id = NEW.predecessor_id
+  LIMIT 1;
+
+  IF FOUND THEN
+    RAISE EXCEPTION 'Circular dependency detected. Cannot create this dependency.';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to check dependencies
+CREATE TRIGGER check_dependencies_trigger
+  BEFORE INSERT OR UPDATE ON task_dependencies
+  FOR EACH ROW EXECUTE FUNCTION check_task_dependencies();
+
+-- =============================================================================
+-- COMPLETION MESSAGE
+-- =============================================================================
+
+DO $$
+BEGIN
+  RAISE NOTICE 'Ganty Database Schema has been successfully created/updated!';
+  RAISE NOTICE '✅ All tables, indexes, policies, functions, and triggers are in place.';
+  RAISE NOTICE '✅ Row Level Security is enabled on all tables.';
+  RAISE NOTICE '✅ Your database is ready for production use.';
+END $$;

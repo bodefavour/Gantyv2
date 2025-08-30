@@ -1,5 +1,8 @@
 /*
-  # Database Functions and Triggers
+  # Database Functions and Triggers - Safe Migration
+
+  This script safely creates or updates database functions and triggers.
+  It handles existing functions and triggers gracefully.
 
   1. Functions
     - `handle_new_user()` - Create profile on user signup
@@ -14,6 +17,29 @@
     - Log activities for important actions
     - Validate task dependencies
 */
+
+-- Drop existing triggers first to avoid conflicts
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON profiles;
+DROP TRIGGER IF EXISTS update_workspaces_updated_at ON workspaces;
+DROP TRIGGER IF EXISTS update_projects_updated_at ON projects;
+DROP TRIGGER IF EXISTS update_tasks_updated_at ON tasks;
+DROP TRIGGER IF EXISTS update_milestones_updated_at ON milestones;
+DROP TRIGGER IF EXISTS update_comments_updated_at ON comments;
+DROP TRIGGER IF EXISTS update_portfolios_updated_at ON portfolios;
+DROP TRIGGER IF EXISTS calculate_project_progress_trigger ON tasks;
+DROP TRIGGER IF EXISTS log_workspace_activity ON workspaces;
+DROP TRIGGER IF EXISTS log_project_activity ON projects;
+DROP TRIGGER IF EXISTS log_task_activity ON tasks;
+DROP TRIGGER IF EXISTS log_milestone_activity ON milestones;
+DROP TRIGGER IF EXISTS check_dependencies_trigger ON task_dependencies;
+
+-- Drop existing functions to recreate them
+DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS update_updated_at() CASCADE;
+DROP FUNCTION IF EXISTS calculate_project_progress() CASCADE;
+DROP FUNCTION IF EXISTS log_activity() CASCADE;
+DROP FUNCTION IF EXISTS check_task_dependencies() CASCADE;
 
 -- Function to handle new user registration
 CREATE OR REPLACE FUNCTION handle_new_user()

@@ -1,5 +1,8 @@
 /*
-  # Create base schema for Ganty project management platform
+  # Create base schema for Ganty project management platform - Safe Migration
+
+  This script safely creates the base database schema.
+  It handles existing tables, policies, and other objects gracefully.
 
   1. New Tables
     - `profiles` - User profile information
@@ -61,6 +64,45 @@
     - Add policies for workspace-based access control
     - Add policies for user-specific data access
 */
+
+-- Drop existing policies first to avoid conflicts
+DO $$
+BEGIN
+    -- Drop basic table policies if they exist
+    DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
+    DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
+    DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
+    
+    DROP POLICY IF EXISTS "Users can read workspaces they belong to" ON workspaces;
+    DROP POLICY IF EXISTS "Workspace owners can update their workspaces" ON workspaces;
+    DROP POLICY IF EXISTS "Users can create workspaces" ON workspaces;
+    
+    DROP POLICY IF EXISTS "Users can read workspace members for their workspaces" ON workspace_members;
+    DROP POLICY IF EXISTS "Workspace admins can manage members" ON workspace_members;
+    
+    DROP POLICY IF EXISTS "Users can read projects in their workspaces" ON projects;
+    DROP POLICY IF EXISTS "Users can create projects in their workspaces" ON projects;
+    DROP POLICY IF EXISTS "Users can update projects in their workspaces" ON projects;
+    
+    DROP POLICY IF EXISTS "Users can read tasks in their workspace projects" ON tasks;
+    DROP POLICY IF EXISTS "Users can create tasks in their workspace projects" ON tasks;
+    DROP POLICY IF EXISTS "Users can update tasks in their workspace projects" ON tasks;
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Ignore errors when policies don't exist
+        NULL;
+END $$;
+
+-- Drop existing indexes if they exist
+DROP INDEX IF EXISTS idx_workspace_members_user_id;
+DROP INDEX IF EXISTS idx_workspace_members_workspace_id;
+DROP INDEX IF EXISTS idx_projects_workspace_id;
+DROP INDEX IF EXISTS idx_tasks_project_id;
+DROP INDEX IF EXISTS idx_tasks_parent_id;
+DROP INDEX IF EXISTS idx_tasks_assigned_to;
+
+-- Drop existing functions if they exist
+DROP FUNCTION IF EXISTS handle_new_user() CASCADE;
 
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS profiles (
