@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
     Calendar,
@@ -50,7 +50,8 @@ export default function Sidebar() {
                 <ul className="space-y-1">
                     {navigation.map((item) => {
                         const isActive = location.pathname === item.href ||
-                            (item.href === '/dashboard/projects' && location.pathname === '/dashboard');
+                            (item.href === '/dashboard/projects' && location.pathname === '/dashboard') ||
+                            (item.href === '/dashboard/my-tasks' && location.pathname.includes('/my-tasks'));
 
                         return (
                             <li key={item.name}>

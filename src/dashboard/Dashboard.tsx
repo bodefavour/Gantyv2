@@ -1,12 +1,13 @@
+import React from 'react';
 import { Routes, Route } from 'react-router-dom';
-import Sidebar from './Sidebar.tsx';
-import Header from './Header.tsx';
-import ProjectsView from './views/ProjectsView.tsx';
-import GanttView from './views/GanttView.tsx';
-import PortfoliosView from './views/PortfoliosView.tsx';
-import TasksView from './views/TasksView.tsx';
-import ReportsView from './views/ReportsView.tsx';
-import WorkloadView from './views/WorkloadView.tsx';
+import Sidebar from './Sidebar';
+import Header from './Header';
+import ProjectsView from './views/ProjectsView';
+import GanttView from './views/GanttView';
+import PortfoliosView from './views/PortfoliosView';
+import TasksView from './views/TasksView';
+import ReportsView from './views/ReportsView';
+import WorkloadView from './views/WorkloadView';
 import SettingsView from './views/SettingsView';
 
 export default function Dashboard() {
@@ -21,7 +22,7 @@ export default function Dashboard() {
                         <Route path="/projects" element={<ProjectsView />} />
                         <Route path="/projects/:projectId/gantt" element={<GanttView />} />
                         <Route path="/portfolios" element={<PortfoliosView />} />
-                        <Route path="/tasks" element={<TasksView />} />
+                        <Route path="/my-tasks" element={<TasksView />} />
                         <Route path="/reports" element={<ReportsView />} />
                         <Route path="/workload" element={<WorkloadView />} />
                         <Route path="/settings" element={<SettingsView />} />

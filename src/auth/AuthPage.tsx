@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Calendar, ArrowLeft, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 
 export default function AuthPage() {
     const navigate = useNavigate();
+    const location = useLocation();
     const { user } = useAuth();
     const [isLogin, setIsLogin] = useState(true);
     const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +21,15 @@ export default function AuthPage() {
 
     useEffect(() => {
         if (user) {
-            navigate('/dashboard');
+            // Check if user has completed onboarding
+            const searchParams = new URLSearchParams(location.search);
+            const isNewUser = searchParams.get('new') === 'true';
+
+            if (isNewUser || !user.user_metadata?.onboarding_completed) {
+                navigate('/onboarding');
+            } else {
+                navigate('/dashboard');
+            }
         }
     }, [user, navigate]);
 
@@ -51,6 +60,9 @@ export default function AuthPage() {
 
                 if (error) throw error;
                 toast.success('Account created successfully!');
+                // Redirect to onboarding for new users
+                navigate('/onboarding');
+                return;
             }
         } catch (error: any) {
             toast.error(error.message);
