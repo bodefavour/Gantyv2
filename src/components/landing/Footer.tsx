@@ -1,4 +1,4 @@
-import React from 'react';
+// ...existing code...
 import { Calendar, Mail, Phone, MapPin } from 'lucide-react';
 
 export default function Footer() {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Upload, User, Plus, X, Briefcase, GraduationCap, Target, BarChart3, Users, FileText, Clock, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
