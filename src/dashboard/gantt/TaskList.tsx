@@ -1,3 +1,4 @@
+import React from 'react';
 import { Plus, MoreHorizontal, Circle, CheckCircle } from 'lucide-react';
 
 interface Task {

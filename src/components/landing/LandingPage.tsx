@@ -1,3 +1,4 @@
+import React from 'react';
 import { Link } from 'react-router-dom';
 import {
     Calendar,
@@ -9,8 +10,8 @@ import {
     ArrowRight,
     CheckCircle
 } from 'lucide-react';
-import Header from './Header.tsx';
-import Footer from './Footer.tsx';
+import Header from './Header';
+import Footer from './Footer';
 
 const features = [
     {

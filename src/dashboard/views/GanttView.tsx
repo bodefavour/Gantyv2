@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft, Filter, Download, Settings, Calendar, Users, BarChart3, List, Table, Eye, Expand as ExpandAll, ListCollapse as CollapseAll } from 'lucide-react';
+import { ArrowLeft, Plus, Filter, Download, Settings, Calendar, Users, BarChart3, List, Table, Eye, Expand as ExpandAll, ListCollapse as CollapseAll } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { format } from 'date-fns';
-import GanttChart from '../gantt/GanttChart.tsx';
-import TaskList from '../gantt/TaskList.tsx';
+import { format, addDays, startOfMonth, endOfMonth } from 'date-fns';
+import GanttChart from '../gantt/GanttChart';
+import TaskList from '../gantt/TaskList';
 
 interface Task {
     id: string;
@@ -31,6 +31,7 @@ export default function GanttView() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState('gantt');
+    const [expandedTasks, setExpandedTasks] = useState(new Set());
 
     useEffect(() => {
         if (projectId) {
@@ -39,8 +40,6 @@ export default function GanttView() {
     }, [projectId]);
 
     const fetchProjectData = async () => {
-        if (!projectId) return;
-        
         try {
             // Fetch project details
             const { data: projectData, error: projectError } = await supabase

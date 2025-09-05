@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { format, addDays, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
 import { Calendar } from 'lucide-react';
 
@@ -107,7 +107,7 @@ export default function GanttChart({ tasks }: GanttChartProps) {
                     </div>
                 ) : (
                     <div className="space-y-1 p-2">
-                        {tasks.map((task) => {
+                        {tasks.map((task, index) => {
                             const position = getTaskPosition(task);
 
                             return (

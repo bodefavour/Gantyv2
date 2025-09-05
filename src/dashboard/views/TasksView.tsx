@@ -11,9 +11,9 @@ import {
     X,
     ChevronRight
 } from 'lucide-react';
-import { useAuth } from '../../../contexts/AuthContext';
-import { useWorkspace } from '../../../contexts/WorkspaceContext';
-import { supabase } from '../../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { supabase } from '../../lib/supabase';
 
 interface Task {
     id: string;
@@ -127,8 +127,8 @@ export default function TasksView() {
                         <button
                             onClick={() => setActiveFilter('incomplete')}
                             className={`text-sm transition-colors ${activeFilter === 'incomplete'
-                                    ? 'text-blue-600 font-medium'
-                                    : 'text-blue-600 hover:text-blue-700'
+                                ? 'text-blue-600 font-medium'
+                                : 'text-blue-600 hover:text-blue-700'
                                 }`}
                         >
                             My incomplete tasks

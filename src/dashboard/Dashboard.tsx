@@ -8,7 +8,9 @@ import PortfoliosView from './views/PortfoliosView';
 import TasksView from './views/TasksView';
 import ReportsView from './views/ReportsView';
 import WorkloadView from './views/WorkloadView';
+import CommunicationView from './views/CommunicationView';
 import SettingsView from './views/SettingsView';
+import TimeLogView from './views/TimeLogView';
 
 export default function Dashboard() {
     return (
@@ -23,8 +25,10 @@ export default function Dashboard() {
                         <Route path="/projects/:projectId/gantt" element={<GanttView />} />
                         <Route path="/portfolios" element={<PortfoliosView />} />
                         <Route path="/my-tasks" element={<TasksView />} />
+                        <Route path="/my-time-log" element={<TimeLogView />} />
                         <Route path="/reports" element={<ReportsView />} />
                         <Route path="/workload" element={<WorkloadView />} />
+                        <Route path="/communication" element={<CommunicationView />} />
                         <Route path="/settings" element={<SettingsView />} />
                     </Routes>
                 </main>

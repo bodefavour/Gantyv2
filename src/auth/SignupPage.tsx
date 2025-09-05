@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, X, Eye, EyeOff, ArrowLeft } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
 export default function SignupPage() {

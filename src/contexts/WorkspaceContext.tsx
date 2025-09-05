@@ -51,7 +51,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
             if (error) throw error;
 
-            const userWorkspaces = (data || []).map((item: any) => ({
+            const userWorkspaces = data.map(item => ({
                 id: item.workspaces.id,
                 name: item.workspaces.name,
                 description: item.workspaces.description,

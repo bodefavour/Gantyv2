@@ -4,7 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { Toaster } from 'react-hot-toast';
 import LandingPage from './components/landing/LandingPage';
-import SignupPage from './components/auth/SignupPage';
+import SignupPage from '../components/auth/SignupPage';
 import LoginPage from './components/auth/LoginPage';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import Dashboard from './components/dashboard/Dashboard';

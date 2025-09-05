@@ -1,3 +1,4 @@
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { Calendar } from 'lucide-react';
 
@@ -20,7 +21,7 @@ export default function Header() {
 
                     <div className="flex items-center space-x-4">
                         <Link
-                            to="/auth"
+                            to="/login"
                             className="text-gray-700 hover:text-teal-600 transition-colors"
                         >
                             Log in
