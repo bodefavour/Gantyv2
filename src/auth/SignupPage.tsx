@@ -24,27 +24,24 @@ export default function SignupPage() {
         if (!user) return;
 
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: profile } = await (supabase as any)
-                .from('profiles')
-                .select('first_name, last_name')
-                .eq('id', user.id)
-                .single();
-
+            // Check if user has completed onboarding
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data: workspaces } = await (supabase as any)
                 .from('workspace_members')
                 .select('workspace_id')
                 .eq('user_id', user.id);
 
-            if (profile?.first_name && workspaces && workspaces.length > 0) {
+            // If user has workspaces, they've completed onboarding
+            if (workspaces && workspaces.length > 0) {
                 navigate('/dashboard');
             } else {
-                navigate('/onboarding?new=true&source=google');
+                // User is authenticated but hasn't completed onboarding
+                navigate('/onboarding?new=true&source=existing');
             }
         } catch (error) {
             console.error('Error checking onboarding status:', error);
-            navigate('/onboarding?new=true&source=google');
+            // If there's an error checking status, send to onboarding anyway
+            navigate('/onboarding?new=true&source=existing');
         }
     }, [user, navigate]);
 
@@ -66,7 +63,8 @@ export default function SignupPage() {
         setLoading(true);
 
         try {
-            const { error } = await supabase.auth.signUp({
+            // Sign up the user
+            const { data: authData, error: authError } = await supabase.auth.signUp({
                 email: formData.email,
                 password: formData.password,
                 options: {
@@ -79,11 +77,51 @@ export default function SignupPage() {
                 }
             });
 
-            if (error) throw error;
-            toast.success('Account created successfully!');
-            navigate('/onboarding?new=true&source=email');
+            if (authError) throw authError;
+
+            // If user was created successfully, proceed to onboarding regardless of confirmation status
+            if (authData.user) {
+                // Store signup data in localStorage to use during onboarding
+                localStorage.setItem('pendingSignupData', JSON.stringify({
+                    email: formData.email,
+                    firstName: formData.firstName,
+                    lastName: formData.lastName,
+                    businessName: formData.businessName,
+                    phoneNumber: formData.phoneNumber,
+                    userId: authData.user.id,
+                    needsConfirmation: !authData.session
+                }));
+
+                if (authData.session) {
+                    // User is automatically logged in (email confirmation disabled)
+                    try {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        await (supabase as any)
+                            .from('profiles')
+                            .upsert({
+                                id: authData.user.id,
+                                email: formData.email,
+                                first_name: formData.firstName,
+                                last_name: formData.lastName,
+                            });
+                    } catch (profileError) {
+                        console.error('Profile update error:', profileError);
+                    }
+                    
+                    toast.success('Account created successfully!');
+                } else {
+                    // User needs email confirmation but we'll let them continue to onboarding
+                    toast.success('Account created! You can complete the setup and confirm your email later.');
+                }
+                
+                // Navigate to onboarding in both cases
+                navigate('/onboarding?new=true&source=email');
+            } else {
+                throw new Error('Failed to create account');
+            }
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'An error occurred');
+            console.error('Signup error:', error);
+            toast.error(error instanceof Error ? error.message : 'Failed to create account');
         } finally {
             setLoading(false);
         }
@@ -91,6 +129,7 @@ export default function SignupPage() {
 
     const handleGoogleAuth = async () => {
         try {
+            setLoading(true);
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
@@ -100,7 +139,9 @@ export default function SignupPage() {
 
             if (error) throw error;
         } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'An error occurred');
+            console.error('Google auth error:', error);
+            toast.error(error instanceof Error ? error.message : 'Google authentication failed');
+            setLoading(false);
         }
     };
 

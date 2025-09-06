@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Plus,
+    Search,
     Filter,
     MoreHorizontal,
     Calendar,
@@ -16,12 +17,18 @@ import {
     Minimize,
     ArrowUpDown,
     Circle,
-    CheckCircle
+    CheckCircle,
+    BarChart3,
+    Table,
+    List as ListIcon,
+    ChevronLeft,
+    ChevronRight
 } from 'lucide-react';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { format, addDays, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
+import { format, addDays, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from 'date-fns';
+import toast from 'react-hot-toast';
 
 interface Project {
     id: string;
@@ -51,13 +58,13 @@ interface Task {
 }
 
 const viewTabs = [
-    { id: 'gantt', name: 'Gantt chart' },
-    { id: 'board', name: 'Board' },
-    { id: 'list', name: 'List' },
-    { id: 'calendar', name: 'Calendar' },
-    { id: 'workload', name: 'Workload' },
-    { id: 'people', name: 'People' },
-    { id: 'dashboard', name: 'Dashboard' },
+    { id: 'gantt', name: 'Gantt chart', icon: BarChart3 },
+    { id: 'board', name: 'Board', icon: Table },
+    { id: 'list', name: 'List', icon: ListIcon },
+    { id: 'calendar', name: 'Calendar', icon: Calendar },
+    { id: 'workload', name: 'Workload', icon: Users },
+    { id: 'people', name: 'People', icon: Users },
+    { id: 'dashboard', name: 'Dashboard', icon: BarChart3 },
 ];
 
 export default function ProjectsView() {
@@ -67,8 +74,15 @@ export default function ProjectsView() {
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState('gantt');
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [newTaskName, setNewTaskName] = useState('');
+    const [addingTask, setAddingTask] = useState(false);
 
-    const fetchData = useCallback(async () => {
+    useEffect(() => {
+        fetchData();
+    }, [currentWorkspace]);
+
+    const fetchData = async () => {
         if (!currentWorkspace || !user) return;
 
         try {
@@ -84,7 +98,7 @@ export default function ProjectsView() {
 
             // Fetch all tasks for all projects
             if (projectsData && projectsData.length > 0) {
-                const projectIds = (projectsData as Project[]).map(p => p.id);
+                const projectIds = projectsData.map(p => p.id);
                 const { data: tasksData, error: tasksError } = await supabase
                     .from('tasks')
                     .select('*')
@@ -96,24 +110,20 @@ export default function ProjectsView() {
             }
         } catch (error) {
             console.error('Error fetching data:', error);
+            toast.error('Failed to load projects and tasks');
         } finally {
             setLoading(false);
         }
-    }, [currentWorkspace, user]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    };
 
     // Generate date range for Gantt chart
     const dateRange = React.useMemo(() => {
-        const today = new Date();
-        const start = startOfMonth(addDays(today, -30));
-        const end = endOfMonth(addDays(today, 60));
+        const start = startOfWeek(startOfMonth(addDays(currentDate, -30)));
+        const end = endOfWeek(endOfMonth(addDays(currentDate, 60)));
         return eachDayOfInterval({ start, end });
-    }, []);
+    }, [currentDate]);
 
-    const dayWidth = 40;
+    const dayWidth = 32;
 
     const getTaskPosition = (task: Task) => {
         const startDate = new Date(task.start_date);
@@ -140,9 +150,64 @@ export default function ProjectsView() {
         switch (status) {
             case 'completed': return 'bg-green-500';
             case 'active': return 'bg-blue-500';
+            case 'in_progress': return 'bg-blue-500';
             case 'on_hold': return 'bg-yellow-500';
             case 'planning': return 'bg-purple-500';
             default: return 'bg-gray-400';
+        }
+    };
+
+    const addTask = async () => {
+        if (!newTaskName.trim() || !projects[0]) return;
+
+        setAddingTask(true);
+        try {
+            const startDate = new Date();
+            const endDate = addDays(startDate, 7);
+
+            const { data, error } = await supabase
+                .from('tasks')
+                .insert({
+                    project_id: projects[0].id,
+                    name: newTaskName,
+                    start_date: format(startDate, 'yyyy-MM-dd'),
+                    end_date: format(endDate, 'yyyy-MM-dd'),
+                    created_by: user?.id || '',
+                })
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            setTasks(prev => [...prev, data]);
+            setNewTaskName('');
+            toast.success('Task added successfully');
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setAddingTask(false);
+        }
+    };
+
+    const updateTaskDates = async (taskId: string, startDate: Date, endDate: Date) => {
+        try {
+            const { error } = await supabase
+                .from('tasks')
+                .update({
+                    start_date: format(startDate, 'yyyy-MM-dd'),
+                    end_date: format(endDate, 'yyyy-MM-dd'),
+                })
+                .eq('id', taskId);
+
+            if (error) throw error;
+
+            setTasks(prev => prev.map(task =>
+                task.id === taskId
+                    ? { ...task, start_date: format(startDate, 'yyyy-MM-dd'), end_date: format(endDate, 'yyyy-MM-dd') }
+                    : task
+            ));
+        } catch (error: any) {
+            toast.error('Failed to update task dates');
         }
     };
 
@@ -177,8 +242,8 @@ export default function ProjectsView() {
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                            <Calendar className="w-5 h-5 text-gray-400" />
-                            <h1 className="text-xl font-semibold text-gray-900">{currentWorkspace?.name || 'All Projects'}</h1>
+                            <BarChart3 className="w-5 h-5 text-gray-400" />
+                            <h1 className="text-xl font-semibold text-gray-900">{currentWorkspace?.name || 'Azeem'}</h1>
                             <Star className="w-4 h-4 text-gray-300" />
                         </div>
                         <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -207,11 +272,12 @@ export default function ProjectsView() {
                         <button
                             key={tab.id}
                             onClick={() => setActiveView(tab.id)}
-                            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab.id === activeView
+                            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab.id === activeView
                                 ? 'border-blue-500 text-blue-600'
                                 : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
+                            <tab.icon className="w-4 h-4" />
                             {tab.name}
                         </button>
                     ))}
@@ -293,18 +359,18 @@ export default function ProjectsView() {
 
                     {/* Task List Content */}
                     <div className="flex-1 overflow-auto">
-                        {tasks.length === 0 ? (
+                        {projects.length === 0 ? (
                             <div className="p-8 text-center">
-                                <p className="text-gray-500 mb-4">No tasks in projects</p>
+                                <p className="text-gray-500 mb-4">No projects found</p>
                                 <button className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors mx-auto">
                                     <Plus className="w-4 h-4" />
-                                    Add a task
+                                    Create a project
                                 </button>
                             </div>
                         ) : (
                             <div className="divide-y divide-gray-100">
                                 {/* Group tasks by project */}
-                                {projects.map((project) => {
+                                {projects.map((project, projectIndex) => {
                                     const projectTasks = tasks.filter(task => task.project_id === project.id);
 
                                     return (
@@ -312,7 +378,7 @@ export default function ProjectsView() {
                                             {/* Project Header */}
                                             <div className="px-4 py-3 bg-gray-50">
                                                 <div className="flex items-center gap-3">
-                                                    <span className="text-sm text-gray-500 w-6">1</span>
+                                                    <span className="text-sm text-gray-500 w-6">{projectIndex + 1}</span>
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2">
                                                             <Calendar className="w-4 h-4 text-gray-400" />
@@ -341,7 +407,7 @@ export default function ProjectsView() {
                                             {projectTasks.map((task, taskIndex) => (
                                                 <div key={task.id} className="px-4 py-3 hover:bg-gray-50 transition-colors">
                                                     <div className="flex items-center gap-3">
-                                                        <span className="text-sm text-gray-500 w-6">1.{taskIndex + 1}</span>
+                                                        <span className="text-sm text-gray-500 w-6">{projectIndex + 1}.{taskIndex + 1}</span>
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2">
                                                                 {getStatusIcon(task.status, task.progress)}
@@ -369,12 +435,28 @@ export default function ProjectsView() {
                                     );
                                 })}
 
-                                {/* Add Task/Project Actions */}
+                                {/* Add Task Actions */}
                                 <div className="px-4 py-3 space-y-2">
-                                    <button className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors text-sm">
-                                        <Plus className="w-4 h-4" />
-                                        Add a task
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <Plus className="w-4 h-4 text-blue-600" />
+                                        <input
+                                            type="text"
+                                            value={newTaskName}
+                                            onChange={(e) => setNewTaskName(e.target.value)}
+                                            onKeyPress={(e) => e.key === 'Enter' && addTask()}
+                                            placeholder="Add a task"
+                                            className="flex-1 text-sm text-blue-600 placeholder-blue-600 bg-transparent border-none outline-none"
+                                        />
+                                        {newTaskName && (
+                                            <button
+                                                onClick={addTask}
+                                                disabled={addingTask}
+                                                className="text-sm text-blue-600 hover:text-blue-700 transition-colors"
+                                            >
+                                                {addingTask ? 'Adding...' : 'Add'}
+                                            </button>
+                                        )}
+                                    </div>
                                     <button className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors text-sm">
                                         <Plus className="w-4 h-4" />
                                         Add a milestone
@@ -391,14 +473,28 @@ export default function ProjectsView() {
                     <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
                         {/* Month Headers */}
                         <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 text-sm font-medium text-gray-700">
-                            <span>August 2025</span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentDate(addDays(currentDate, -30))}
+                                    className="p-1 hover:bg-gray-100 rounded"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <span>August 2025</span>
+                                <button
+                                    onClick={() => setCurrentDate(addDays(currentDate, 30))}
+                                    className="p-1 hover:bg-gray-100 rounded"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
                             <span>September 2025</span>
                         </div>
 
                         {/* Day Headers */}
                         <div className="h-12 flex items-center border-b border-gray-100">
                             <div className="flex">
-                                {dateRange.slice(0, 31).map((date, index) => {
+                                {dateRange.slice(0, 62).map((date, index) => {
                                     const day = parseInt(format(date, 'dd'));
                                     const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                                     const isWeekend = [0, 6].includes(date.getDay());
@@ -410,9 +506,9 @@ export default function ProjectsView() {
                                                 }`}
                                             style={{ width: dayWidth }}
                                         >
-                                            <div className={`text-sm py-2 ${isToday ? 'font-bold text-blue-600' : 'text-gray-700'
+                                            <div className={`text-xs py-2 ${isToday ? 'font-bold text-blue-600' : 'text-gray-700'
                                                 }`}>
-                                                {day}
+                                                {day.toString().padStart(2, '0')}
                                             </div>
                                         </div>
                                     );

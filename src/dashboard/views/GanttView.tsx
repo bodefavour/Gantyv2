@@ -45,7 +45,7 @@ export default function GanttView() {
 
     const fetchProjectData = useCallback(async () => {
         if (!projectId) return;
-        
+
         try {
             // Fetch project details
             const { data: projectData, error: projectError } = await supabase

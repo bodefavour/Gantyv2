@@ -84,7 +84,7 @@ export default function CreateProjectModal({ open, onClose, onSuccess }: CreateP
                         <X className="w-6 h-6" />
                     </button>
                 </div>
-                
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">

@@ -27,10 +27,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Listen for auth changes
         const {
             data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, session) => {
+        } = supabase.auth.onAuthStateChange(async (event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
             setLoading(false);
+
+            // Handle pending signup completion when user logs in
+            if (event === 'SIGNED_IN' && session?.user) {
+                const pendingSignupData = localStorage.getItem('pendingSignupData');
+                if (pendingSignupData) {
+                    try {
+                        const parsedData = JSON.parse(pendingSignupData);
+                        
+                        // Only process if this is the same user
+                        if (parsedData.userId === session.user.id) {
+                            // Update profile with the stored data
+                            await supabase.from('profiles').upsert({
+                                id: session.user.id,
+                                email: parsedData.email,
+                                first_name: parsedData.firstName,
+                                last_name: parsedData.lastName,
+                            });
+
+                            // If there's onboarding data, we might want to complete the setup
+                            if (parsedData.onboardingData) {
+                                // Store in a different key for the onboarding flow to pick up
+                                localStorage.setItem('pendingOnboardingCompletion', JSON.stringify(parsedData.onboardingData));
+                            }
+
+                            // Clear the pending signup data
+                            localStorage.removeItem('pendingSignupData');
+                        }
+                    } catch (error) {
+                        console.error('Error processing pending signup data:', error);
+                        // Clear invalid data
+                        localStorage.removeItem('pendingSignupData');
+                    }
+                }
+            }
         });
 
         return () => subscription.unsubscribe();

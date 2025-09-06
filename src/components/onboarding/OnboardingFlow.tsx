@@ -17,6 +17,10 @@ interface OnboardingData {
     projectName: string;
     tasks: string[];
     teamEmails: string[];
+    createdProject?: {
+        id: string;
+        name: string;
+    } | null;
 }
 
 export default function OnboardingFlow() {
@@ -37,8 +41,52 @@ export default function OnboardingFlow() {
         features: [],
         projectName: '',
         tasks: [''],
-        teamEmails: ['', '', '']
+        teamEmails: ['', '', ''],
+        createdProject: null
     });
+
+    // Initialize data from user metadata or localStorage when available
+    useEffect(() => {
+        // First try to get data from user metadata if authenticated
+        if (user && !data.firstName) {
+            const firstName = user.user_metadata?.first_name || '';
+            const lastName = user.user_metadata?.last_name || '';
+            const businessName = user.user_metadata?.business_name || '';
+            
+            setData(prev => ({
+                ...prev,
+                firstName,
+                lastName,
+                businessName,
+            }));
+
+            // If we have the required data and this is a new signup, we can skip step 1
+            if (firstName && lastName && signupSource === 'email') {
+                setCurrentStep(2);
+            }
+        } else if (!user && signupSource === 'email') {
+            // If user is not authenticated but we have signup source, check localStorage
+            const pendingSignupData = localStorage.getItem('pendingSignupData');
+            if (pendingSignupData) {
+                try {
+                    const parsedData = JSON.parse(pendingSignupData);
+                    setData(prev => ({
+                        ...prev,
+                        firstName: parsedData.firstName || '',
+                        lastName: parsedData.lastName || '',
+                        businessName: parsedData.businessName || '',
+                    }));
+                    
+                    // Skip to step 2 since we have basic info
+                    if (parsedData.firstName && parsedData.lastName) {
+                        setCurrentStep(2);
+                    }
+                } catch (error) {
+                    console.error('Error parsing pending signup data:', error);
+                }
+            }
+        }
+    }, [user, data.firstName, signupSource]);
 
     // Skip personal details step if user signed up with Google
     useEffect(() => {
@@ -140,6 +188,162 @@ export default function OnboardingFlow() {
         setData({ ...data, tasks: [...data.tasks, ''] });
     };
 
+    const addTaskToProject = async (taskName: string, taskIndex: number) => {
+        if (!data.createdProject || !user || !taskName.trim()) return;
+
+        if (data.createdProject.id === 'pending') {
+            // Task will be created later when user confirms email
+            return;
+        }
+
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase as any)
+                .from('tasks')
+                .insert({
+                    project_id: data.createdProject.id,
+                    name: taskName,
+                    start_date: new Date().toISOString().split('T')[0],
+                    end_date: new Date(Date.now() + (taskIndex + 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                    created_by: user.id,
+                });
+
+            if (error) throw error;
+            toast.success(`Task "${taskName}" added to project!`);
+        } catch (error: any) {
+            console.error('Task creation error:', error);
+            toast.error(`Failed to add task: ${error.message}`);
+        }
+    };
+
+    const createProject = async () => {
+        if (!data.projectName.trim()) {
+            toast.error('Please enter a project name');
+            return;
+        }
+
+        // If user is not authenticated, store the project data for later creation
+        if (!user) {
+            const pendingSignupData = localStorage.getItem('pendingSignupData');
+            if (pendingSignupData) {
+                try {
+                    const parsedData = JSON.parse(pendingSignupData);
+                    const updatedData = {
+                        ...parsedData,
+                        onboardingData: {
+                            teamSize: data.teamSize,
+                            useCase: data.useCase,
+                            experience: data.experience,
+                            features: data.features,
+                            projectName: data.projectName,
+                            tasks: data.tasks,
+                            teamEmails: data.teamEmails
+                        }
+                    };
+                    localStorage.setItem('pendingSignupData', JSON.stringify(updatedData));
+                    
+                    // Set a fake project ID to show success state
+                    setData(prev => ({
+                        ...prev,
+                        createdProject: {
+                            id: 'pending',
+                            name: data.projectName
+                        }
+                    }));
+                    
+                    toast.success('Project setup saved! Complete your email confirmation to finalize everything.');
+                    return;
+                } catch (error) {
+                    console.error('Error storing project data:', error);
+                }
+            }
+            
+            toast.error('Please complete authentication first');
+            return;
+        }
+
+        setLoading(true);
+        try {
+            // First ensure we have a workspace
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let { data: existingWorkspace } = await (supabase as any)
+                .from('workspace_members')
+                .select(`
+                    workspace_id,
+                    workspaces (
+                        id,
+                        name
+                    )
+                `)
+                .eq('user_id', user.id)
+                .eq('role', 'owner')
+                .single();
+
+            let workspaceId = existingWorkspace?.workspace_id;
+
+            // If no workspace exists, create one
+            if (!workspaceId) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data: newWorkspace, error: workspaceError } = await (supabase as any)
+                    .from('workspaces')
+                    .insert({
+                        name: data.businessName || `${data.firstName}'s Workspace`,
+                        description: `Workspace for ${data.useCase} projects`,
+                        owner_id: user.id,
+                    })
+                    .select()
+                    .single();
+
+                if (workspaceError) throw workspaceError;
+
+                // Add user as workspace owner
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { error: memberError } = await (supabase as any)
+                    .from('workspace_members')
+                    .insert({
+                        workspace_id: newWorkspace.id,
+                        user_id: user.id,
+                        role: 'owner'
+                    });
+
+                if (memberError) throw memberError;
+                workspaceId = newWorkspace.id;
+            }
+
+            // Create the project
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data: project, error: projectError } = await (supabase as any)
+                .from('projects')
+                .insert({
+                    workspace_id: workspaceId,
+                    name: data.projectName,
+                    description: `${data.projectName} project created during onboarding`,
+                    start_date: new Date().toISOString().split('T')[0],
+                    created_by: user.id,
+                })
+                .select()
+                .single();
+
+            if (projectError) throw projectError;
+
+            // Update the state to show the project was created
+            setData(prev => ({
+                ...prev,
+                createdProject: {
+                    id: project.id,
+                    name: project.name
+                }
+            }));
+
+            toast.success(`Project "${data.projectName}" created successfully!`);
+        } catch (error: any) {
+            console.error('Project creation error:', error);
+            toast.error(error.message || 'Failed to create project');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const updateTask = (index: number, value: string) => {
         const newTasks = [...data.tasks];
         newTasks[index] = value;
@@ -162,9 +366,37 @@ export default function OnboardingFlow() {
     const handleComplete = async () => {
         setLoading(true);
         try {
+            // If user is not authenticated, store the onboarding data and redirect to login
+            if (!user) {
+                const pendingSignupData = localStorage.getItem('pendingSignupData');
+                if (pendingSignupData) {
+                    try {
+                        const parsedData = JSON.parse(pendingSignupData);
+                        const updatedData = {
+                            ...parsedData,
+                            onboardingData: {
+                                teamSize: data.teamSize,
+                                useCase: data.useCase,
+                                experience: data.experience,
+                                features: data.features,
+                                projectName: data.projectName,
+                                tasks: data.tasks,
+                                teamEmails: data.teamEmails
+                            }
+                        };
+                        localStorage.setItem('pendingSignupData', JSON.stringify(updatedData));
+                    } catch (error) {
+                        console.error('Error storing onboarding data:', error);
+                    }
+                }
+                
+                toast.success('Setup completed! Please confirm your email to access your workspace.');
+                navigate('/login?message=Please confirm your email to complete setup');
+                return;
+            }
             // Update user profile
-
-            const { error: profileError } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: profileError } = await (supabase as any)
                 .from('profiles')
                 .upsert({
                     id: user?.id || '',
@@ -176,8 +408,8 @@ export default function OnboardingFlow() {
             if (profileError) throw profileError;
 
             // Create workspace
-
-            const { data: workspace, error: workspaceError } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data: workspace, error: workspaceError } = await (supabase as any)
                 .from('workspaces')
                 .insert({
                     name: data.businessName || `${data.firstName}'s Workspace`,
@@ -190,8 +422,8 @@ export default function OnboardingFlow() {
             if (workspaceError) throw workspaceError;
 
             // Add user as workspace owner
-
-            const { error: memberError } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: memberError } = await (supabase as any)
                 .from('workspace_members')
                 .insert({
                     workspace_id: workspace?.id as string,
@@ -203,8 +435,8 @@ export default function OnboardingFlow() {
 
             // Create first project if name provided
             if (data.projectName.trim()) {
-
-                const { data: project, error: projectError } = await supabase
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data: project, error: projectError } = await (supabase as any)
                     .from('projects')
                     .insert({
                         workspace_id: workspace?.id as string,
@@ -230,7 +462,8 @@ export default function OnboardingFlow() {
                         created_by: user?.id || '',
                     }));
 
-                    const { error: tasksError } = await supabase
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const { error: tasksError } = await (supabase as any)
                         .from('tasks')
                         .insert(tasksToInsert);
 
@@ -250,6 +483,10 @@ export default function OnboardingFlow() {
     const canProceed = () => {
         if (currentStep === 1) {
             return data.firstName.trim() && data.lastName.trim();
+        }
+        if (currentStep === 6) {
+            // For step 6 (project creation), user can proceed to step 7 (tasks) only if they have created a project
+            return data.createdProject !== null;
         }
         return true;
     };
@@ -534,8 +771,12 @@ export default function OnboardingFlow() {
                                     />
                                 </div>
 
-                                <button className="w-full bg-teal-600 text-white py-2 rounded-lg font-medium hover:bg-teal-700 transition-colors shadow-md text-sm">
-                                    Create project
+                                <button 
+                                    onClick={createProject}
+                                    disabled={loading || !data.projectName.trim()}
+                                    className="w-full bg-teal-600 text-white py-2 rounded-lg font-medium hover:bg-teal-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors shadow-md text-sm"
+                                >
+                                    {loading ? 'Creating...' : data.createdProject ? '✓ Project Created' : 'Create project'}
                                 </button>
                             </div>
                         </div>
@@ -561,47 +802,77 @@ export default function OnboardingFlow() {
                 <h2 className="text-3xl font-bold text-gray-900 mb-3">Now let's create some</h2>
                 <p className="text-3xl font-bold text-gray-900 mb-4">tasks</p>
 
-                <p className="text-gray-600 mb-6">Add several tasks to your project.</p>
+                {!data.createdProject ? (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+                        <p className="text-yellow-800 text-sm">
+                            ⚠️ You need to create a project first before adding tasks. Please go back to the previous step and create your project.
+                        </p>
+                    </div>
+                ) : (
+                    <p className="text-gray-600 mb-6">
+                        Add several tasks to your project "{data.createdProject.name}".
+                    </p>
+                )}
             </div>
 
             <div className="flex gap-6">
                 <div className="flex-1">
-                    <div className="space-y-3">
-                        {data.tasks.map((task, index) => (
-                            <div key={index} className="flex items-center gap-3">
-                                <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
-                                    <span className="text-xs font-semibold text-gray-600">{index + 1}</span>
+                    {data.createdProject ? (
+                        <div className="space-y-3">
+                            {data.tasks.map((task, index) => (
+                                <div key={index} className="flex items-center gap-3">
+                                    <div className="w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center">
+                                        <span className="text-xs font-semibold text-gray-600">{index + 1}</span>
+                                    </div>
+                                    <div className="flex-1 relative">
+                                        <input
+                                            type="text"
+                                            value={task}
+                                            onChange={(e) => updateTask(index, e.target.value)}
+                                            onBlur={(e) => {
+                                                if (e.target.value.trim() && data.createdProject) {
+                                                    addTaskToProject(e.target.value.trim(), index);
+                                                }
+                                            }}
+                                            className="w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all duration-200"
+                                            placeholder={`Task ${index + 1}`}
+                                        />
+                                        {data.tasks.length > 1 && (
+                                            <button
+                                                onClick={() => removeTask(index)}
+                                                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
-                                <div className="flex-1 relative">
-                                    <input
-                                        type="text"
-                                        value={task}
-                                        onChange={(e) => updateTask(index, e.target.value)}
-                                        className="w-full px-3 py-2 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all duration-200"
-                                        placeholder={`Task ${index + 1}`}
-                                    />
-                                    {data.tasks.length > 1 && (
-                                        <button
-                                            onClick={() => removeTask(index)}
-                                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors"
-                                        >
-                                            <X className="w-5 h-5" />
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
+                            ))}
 
-                        <button
-                            onClick={addTask}
-                            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors font-medium text-sm"
-                        >
-                            <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                                <Plus className="w-4 h-4" />
+                            <button
+                                onClick={addTask}
+                                className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors font-medium text-sm"
+                            >
+                                <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <Plus className="w-4 h-4" />
+                                </div>
+                                Add another task
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="text-center py-12">
+                            <div className="text-gray-400 mb-4">
+                                <Calendar className="w-16 h-16 mx-auto" />
                             </div>
-                            Add another task
-                        </button>
-                    </div>
+                            <p className="text-gray-600 mb-4">No project created yet</p>
+                            <button
+                                onClick={() => setCurrentStep(6)}
+                                className="bg-teal-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-teal-700 transition-colors"
+                            >
+                                Go back to create project
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex-1">
