@@ -1,10 +1,10 @@
-// ...existing code...
+import React from 'react';
 import { Bell, Search, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 
 export default function Header() {
-    const { user, signOut } = useAuth();
+    const { user } = useAuth();
     const { currentWorkspace } = useWorkspace();
 
     return (

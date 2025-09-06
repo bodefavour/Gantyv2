@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { ArrowLeft, Plus, Filter, Download, Settings, Calendar, Users, BarChart3, List, Table, Eye, Expand as ExpandAll, ListCollapse as CollapseAll } from 'lucide-react';
+import { ArrowLeft, Filter, Download, Settings, Calendar, Users, BarChart3, List, Table, Eye, Expand as ExpandAll, ListCollapse as CollapseAll } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { format, addDays, startOfMonth, endOfMonth } from 'date-fns';
+import { format } from 'date-fns';
 import GanttChart from '../gantt/GanttChart';
 import TaskList from '../gantt/TaskList';
 
@@ -17,6 +17,17 @@ interface Task {
     parent_id: string | null;
 }
 
+interface Project {
+    id: string;
+    name: string;
+    description: string | null;
+    start_date: string;
+    end_date: string | null;
+    status: string;
+    progress: number;
+    created_at: string;
+}
+
 const viewTabs = [
     { id: 'gantt', name: 'Gantt chart', icon: BarChart3 },
     { id: 'board', name: 'Board', icon: Table },
@@ -27,19 +38,14 @@ const viewTabs = [
 
 export default function GanttView() {
     const { projectId } = useParams();
-    const [project, setProject] = useState<any>(null);
+    const [project, setProject] = useState<Project | null>(null);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState('gantt');
-    const [expandedTasks, setExpandedTasks] = useState(new Set());
 
-    useEffect(() => {
-        if (projectId) {
-            fetchProjectData();
-        }
-    }, [projectId]);
-
-    const fetchProjectData = async () => {
+    const fetchProjectData = useCallback(async () => {
+        if (!projectId) return;
+        
         try {
             // Fetch project details
             const { data: projectData, error: projectError } = await supabase
@@ -65,7 +71,13 @@ export default function GanttView() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [projectId]);
+
+    useEffect(() => {
+        if (projectId) {
+            fetchProjectData();
+        }
+    }, [projectId, fetchProjectData]);
 
     if (loading) {
         return (

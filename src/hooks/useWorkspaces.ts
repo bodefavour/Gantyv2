@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import type { Database } from '../lib/database.types';
@@ -7,6 +7,10 @@ import toast from 'react-hot-toast';
 type Workspace = Database['public']['Tables']['workspaces']['Row'];
 type WorkspaceInsert = Database['public']['Tables']['workspaces']['Insert'];
 type WorkspaceWithRole = Workspace & { role: string };
+type WorkspaceMemberRow = {
+    role: string;
+    workspaces: Workspace;
+};
 
 export function useWorkspaces() {
     const { user } = useAuth();
@@ -14,7 +18,7 @@ export function useWorkspaces() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchWorkspaces = async () => {
+    const fetchWorkspaces = useCallback(async () => {
         if (!user) {
             setWorkspaces([]);
             setLoading(false);
@@ -40,24 +44,24 @@ export function useWorkspaces() {
 
             if (error) throw error;
 
-            const userWorkspaces = (data as any[]).map((item: any) => ({
+            const userWorkspaces = (data as WorkspaceMemberRow[]).map((item) => ({
                 ...item.workspaces,
                 role: item.role
             }));
 
             setWorkspaces(userWorkspaces);
             setError(null);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'An error occurred');
             setWorkspaces([]);
         } finally {
             setLoading(false);
         }
-    };
+    }, [user]);
 
     useEffect(() => {
         fetchWorkspaces();
-    }, [user]);
+    }, [fetchWorkspaces]);
 
     const createWorkspace = async (workspaceData: Omit<WorkspaceInsert, 'owner_id'>) => {
         if (!user) throw new Error('User not authenticated');

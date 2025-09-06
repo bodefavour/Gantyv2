@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Plus,
-    Search,
     Filter,
     MoreHorizontal,
     Calendar,
@@ -69,11 +68,7 @@ export default function ProjectsView() {
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState('gantt');
 
-    useEffect(() => {
-        fetchData();
-    }, [currentWorkspace]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         if (!currentWorkspace || !user) return;
 
         try {
@@ -89,7 +84,7 @@ export default function ProjectsView() {
 
             // Fetch all tasks for all projects
             if (projectsData && projectsData.length > 0) {
-                const projectIds = projectsData.map(p => p.id);
+                const projectIds = (projectsData as Project[]).map(p => p.id);
                 const { data: tasksData, error: tasksError } = await supabase
                     .from('tasks')
                     .select('*')
@@ -104,7 +99,11 @@ export default function ProjectsView() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentWorkspace, user]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     // Generate date range for Gantt chart
     const dateRange = React.useMemo(() => {

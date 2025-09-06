@@ -1,13 +1,11 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     ArrowUpDown,
-    Filter,
     Download,
     Plus,
     MoreHorizontal,
     RefreshCw,
     Settings,
-    Eye,
     X,
     ChevronRight
 } from 'lucide-react';
@@ -38,11 +36,7 @@ export default function TasksView() {
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState('incomplete');
 
-    useEffect(() => {
-        fetchTasks();
-    }, [currentWorkspace, user]);
-
-    const fetchTasks = async () => {
+    const fetchTasks = useCallback(async () => {
         if (!currentWorkspace || !user) return;
 
         try {
@@ -67,7 +61,11 @@ export default function TasksView() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentWorkspace, user]);
+
+    useEffect(() => {
+        fetchTasks();
+    }, [fetchTasks]);
 
     const filteredTasks = tasks.filter(task => {
         if (activeFilter === 'incomplete') {

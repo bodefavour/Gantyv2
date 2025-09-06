@@ -1,29 +1,17 @@
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
     ArrowLeft,
     X,
     Clock,
     ChevronDown,
     RefreshCw,
-    Filter,
     Download,
     MoreHorizontal,
     ArrowUpDown
 } from 'lucide-react';
 
-interface TimeEntry {
-    id: string;
-    task_name: string;
-    project_name: string;
-    date: string;
-    time: string;
-    comment: string;
-}
-
 export default function TimeLogView() {
-    const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [groupBy, setGroupBy] = useState('date');
+    const [groupBy] = useState('date');
 
     return (
         <div className="h-full flex flex-col bg-white">

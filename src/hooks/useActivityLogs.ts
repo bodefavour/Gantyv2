@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { ActivityLogWithDetails } from '../lib/database.types';
 
@@ -7,7 +7,7 @@ export function useActivityLogs(workspaceId?: string, projectId?: string) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchActivities = async () => {
+    const fetchActivities = useCallback(async () => {
         if (!workspaceId) {
             setActivities([]);
             setLoading(false);
@@ -40,17 +40,17 @@ export function useActivityLogs(workspaceId?: string, projectId?: string) {
             if (error) throw error;
             setActivities(data || []);
             setError(null);
-        } catch (err: any) {
-            setError(err.message);
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : 'An error occurred');
             setActivities([]);
         } finally {
             setLoading(false);
         }
-    };
+    }, [workspaceId, projectId]);
 
     useEffect(() => {
         fetchActivities();
-    }, [workspaceId, projectId]);
+    }, [fetchActivities]);
 
     const logActivity = async (activityData: {
         action: string;
@@ -58,9 +58,9 @@ export function useActivityLogs(workspaceId?: string, projectId?: string) {
         entity_id?: string;
         project_id?: string;
         task_id?: string;
-        old_values?: any;
-        new_values?: any;
-        metadata?: any;
+        old_values?: Record<string, unknown> | null;
+        new_values?: Record<string, unknown> | null;
+        metadata?: Record<string, unknown>;
     }) => {
         if (!workspaceId) throw new Error('No workspace selected');
 

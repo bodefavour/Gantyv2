@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Upload, User, Plus, X, Briefcase, GraduationCap, Target, BarChart3, Users, FileText, Clock, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import type { Database } from '../../lib/database.types';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -22,7 +23,7 @@ export default function OnboardingFlow() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const searchParams = new URLSearchParams(location.search);
-    const isNewUser = searchParams.get('new') === 'true';
+    // const isNewUser = searchParams.get('new') === 'true';
     const signupSource = searchParams.get('source'); // 'email' or 'google'
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -162,6 +163,7 @@ export default function OnboardingFlow() {
         setLoading(true);
         try {
             // Update user profile
+
             const { error: profileError } = await supabase
                 .from('profiles')
                 .upsert({
@@ -174,6 +176,7 @@ export default function OnboardingFlow() {
             if (profileError) throw profileError;
 
             // Create workspace
+
             const { data: workspace, error: workspaceError } = await supabase
                 .from('workspaces')
                 .insert({
@@ -187,10 +190,11 @@ export default function OnboardingFlow() {
             if (workspaceError) throw workspaceError;
 
             // Add user as workspace owner
+
             const { error: memberError } = await supabase
                 .from('workspace_members')
                 .insert({
-                    workspace_id: workspace.id,
+                    workspace_id: workspace?.id as string,
                     user_id: user?.id || '',
                     role: 'owner'
                 });
@@ -199,10 +203,11 @@ export default function OnboardingFlow() {
 
             // Create first project if name provided
             if (data.projectName.trim()) {
+
                 const { data: project, error: projectError } = await supabase
                     .from('projects')
                     .insert({
-                        workspace_id: workspace.id,
+                        workspace_id: workspace?.id as string,
                         name: data.projectName,
                         description: 'First project created during onboarding',
                         start_date: new Date().toISOString().split('T')[0],
@@ -216,8 +221,9 @@ export default function OnboardingFlow() {
                 // Create tasks if provided
                 const validTasks = data.tasks.filter(task => task.trim());
                 if (validTasks.length > 0) {
+
                     const tasksToInsert = validTasks.map((taskName, index) => ({
-                        project_id: project.id,
+                        project_id: project?.id as string,
                         name: taskName,
                         start_date: new Date().toISOString().split('T')[0],
                         end_date: new Date(Date.now() + (index + 1) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],

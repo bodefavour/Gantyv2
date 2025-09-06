@@ -1,5 +1,5 @@
-// ...existing code...
-import { Plus, Briefcase } from 'lucide-react';
+import React from 'react';
+import { Briefcase } from 'lucide-react';
 
 export default function PortfoliosView() {
     return (

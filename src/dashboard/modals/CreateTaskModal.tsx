@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 import { useTasks } from '../../hooks/useTasks';
 import { supabase } from '../../lib/supabase';
@@ -35,15 +35,10 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, parentTask
         is_milestone: false,
     });
 
-    useEffect(() => {
-        if (isOpen) {
-            fetchTeamMembers();
-        }
-    }, [isOpen, projectId]);
-
-    const fetchTeamMembers = async () => {
+    const fetchTeamMembers = useCallback(async () => {
         try {
             // Get workspace members for the project
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data: project } = await (supabase as any)
                 .from('projects')
                 .select('workspace_id')
@@ -52,6 +47,7 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, parentTask
 
             if (!project) return;
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data, error } = await (supabase as any)
                 .from('workspace_members')
                 .select(`
@@ -67,11 +63,18 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, parentTask
 
             if (error) throw error;
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setTeamMembers(data.map((item: any) => item.profiles).filter(Boolean));
         } catch (error) {
             console.error('Error fetching team members:', error);
         }
-    };
+    }, [projectId]);
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchTeamMembers();
+        }
+    }, [isOpen, fetchTeamMembers]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -86,8 +89,6 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, parentTask
                 parent_id: parentTaskId,
                 assigned_to: formData.assigned_to || undefined,
                 priority: formData.priority,
-                estimated_hours: formData.estimated_hours ? parseFloat(formData.estimated_hours) : undefined,
-                is_milestone: formData.is_milestone,
             });
 
             onClose();
@@ -101,8 +102,8 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, parentTask
                 estimated_hours: '',
                 is_milestone: false,
             });
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'An error occurred');
         } finally {
             setLoading(false);
         }
@@ -206,7 +207,7 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, parentTask
                             </label>
                             <select
                                 value={formData.priority}
-                                onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
+                                onChange={(e) => setFormData({ ...formData, priority: e.target.value as 'low' | 'medium' | 'high' | 'critical' })}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                             >
                                 <option value="low">Low</option>

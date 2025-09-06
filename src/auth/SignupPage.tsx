@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, X, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,23 +20,19 @@ export default function SignupPage() {
         phoneNumber: '',
     });
 
-    useEffect(() => {
-        if (user) {
-            checkUserOnboardingStatus();
-        }
-    }, [user]);
-
-    const checkUserOnboardingStatus = async () => {
+    const checkUserOnboardingStatus = useCallback(async () => {
         if (!user) return;
 
         try {
-            const { data: profile } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data: profile } = await (supabase as any)
                 .from('profiles')
                 .select('first_name, last_name')
                 .eq('id', user.id)
                 .single();
 
-            const { data: workspaces } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data: workspaces } = await (supabase as any)
                 .from('workspace_members')
                 .select('workspace_id')
                 .eq('user_id', user.id);
@@ -50,7 +46,13 @@ export default function SignupPage() {
             console.error('Error checking onboarding status:', error);
             navigate('/onboarding?new=true&source=google');
         }
-    };
+    }, [user, navigate]);
+
+    useEffect(() => {
+        if (user) {
+            checkUserOnboardingStatus();
+        }
+    }, [user, checkUserOnboardingStatus]);
 
     const handleEmailSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -80,8 +82,8 @@ export default function SignupPage() {
             if (error) throw error;
             toast.success('Account created successfully!');
             navigate('/onboarding?new=true&source=email');
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'An error occurred');
         } finally {
             setLoading(false);
         }
@@ -97,8 +99,8 @@ export default function SignupPage() {
             });
 
             if (error) throw error;
-        } catch (error: any) {
-            toast.error(error.message);
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'An error occurred');
         }
     };
 

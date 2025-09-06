@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -26,7 +26,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const fetchWorkspaces = async () => {
+    const fetchWorkspaces = useCallback(async () => {
         if (!user) {
             setWorkspaces([]);
             setCurrentWorkspace(null);
@@ -35,23 +35,25 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         }
 
         try {
-            const { data, error } = await supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data, error } = await (supabase as any)
                 .from('workspace_members')
                 .select(`
-          workspace_id,
-          role,
-          workspaces!inner (
-            id,
-            name,
-            description,
-            owner_id
-          )
-        `)
+                    workspace_id,
+                    role,
+                    workspaces!inner (
+                        id,
+                        name,
+                        description,
+                        owner_id
+                    )
+                `)
                 .eq('user_id', user.id);
 
             if (error) throw error;
 
-            const userWorkspaces = data.map(item => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const userWorkspaces = (data || []).map((item: any) => ({
                 id: item.workspaces.id,
                 name: item.workspaces.name,
                 description: item.workspaces.description,
@@ -69,11 +71,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user, currentWorkspace]);
 
     useEffect(() => {
         fetchWorkspaces();
-    }, [user]);
+    }, [fetchWorkspaces]);
 
     return (
         <WorkspaceContext.Provider

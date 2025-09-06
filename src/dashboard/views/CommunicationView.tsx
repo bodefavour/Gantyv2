@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
     ArrowLeft,
     X,
@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 export default function CommunicationView() {
-    const [selectedProject, setSelectedProject] = useState('all projects');
+    const [selectedProject] = useState('all projects');
     const [activeTab, setActiveTab] = useState('all-tasks');
     const [selectedTask, setSelectedTask] = useState('Summary task');
 

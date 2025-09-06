@@ -1,9 +1,8 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
     ArrowLeft,
     X,
     BarChart3,
-    ChevronDown,
     MoreHorizontal
 } from 'lucide-react';
 

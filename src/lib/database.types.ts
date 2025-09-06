@@ -86,7 +86,7 @@ export interface Database {
                     color: string;
                     is_template: boolean;
                     template_id: string | null;
-                    settings: any;
+                    settings: Record<string, unknown>;
                     created_by: string;
                     created_at: string;
                     updated_at: string;
@@ -103,7 +103,7 @@ export interface Database {
                     color?: string;
                     is_template?: boolean;
                     template_id?: string | null;
-                    settings?: any;
+                    settings?: Record<string, unknown>;
                     created_by: string;
                 };
                 Update: {
@@ -117,7 +117,7 @@ export interface Database {
                     color?: string;
                     is_template?: boolean;
                     template_id?: string | null;
-                    settings?: any;
+                    settings?: Record<string, unknown>;
                 };
             };
             tasks: {
@@ -233,7 +233,7 @@ export interface Database {
                     entity_type: 'project' | 'task';
                     name: string;
                     field_type: 'text' | 'number' | 'date' | 'select' | 'multi_select' | 'boolean';
-                    options: any;
+                    options: string[];
                     required: boolean;
                     created_at: string;
                 };
@@ -242,13 +242,13 @@ export interface Database {
                     entity_type: 'project' | 'task';
                     name: string;
                     field_type?: 'text' | 'number' | 'date' | 'select' | 'multi_select' | 'boolean';
-                    options?: any;
+                    options?: string[];
                     required?: boolean;
                 };
                 Update: {
                     name?: string;
                     field_type?: 'text' | 'number' | 'date' | 'select' | 'multi_select' | 'boolean';
-                    options?: any;
+                    options?: string[];
                     required?: boolean;
                 };
             };
@@ -260,7 +260,7 @@ export interface Database {
                     type: string;
                     title: string;
                     message: string;
-                    data: any;
+                    data: Record<string, unknown>;
                     read_at: string | null;
                     created_at: string;
                 };
@@ -270,7 +270,7 @@ export interface Database {
                     type: string;
                     title: string;
                     message: string;
-                    data?: any;
+                    data?: Record<string, unknown>;
                 };
                 Update: {
                     read_at?: string | null;
@@ -362,9 +362,9 @@ export interface Database {
                     entity_id: string | null;
                     project_id: string | null;
                     task_id: string | null;
-                    old_values: any;
-                    new_values: any;
-                    metadata: any;
+                    old_values: Record<string, unknown> | null;
+                    new_values: Record<string, unknown> | null;
+                    metadata: Record<string, unknown>;
                     created_at: string;
                 };
                 Insert: {
@@ -375,12 +375,12 @@ export interface Database {
                     entity_id?: string | null;
                     project_id?: string | null;
                     task_id?: string | null;
-                    old_values?: any;
-                    new_values?: any;
-                    metadata?: any;
+                    old_values?: Record<string, unknown> | null;
+                    new_values?: Record<string, unknown> | null;
+                    metadata?: Record<string, unknown>;
                 };
                 Update: {
-                    metadata?: any;
+                    metadata?: Record<string, unknown>;
                 };
             };
         };

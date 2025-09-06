@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
     ArrowLeft,
     X,
@@ -6,14 +6,12 @@ import {
     ChevronDown,
     Filter,
     Download,
-    MoreHorizontal,
-    ChevronLeft,
-    ChevronRight
+    MoreHorizontal
 } from 'lucide-react';
 
 export default function WorkloadView() {
-    const [mode, setMode] = useState('Hours');
-    const [range, setRange] = useState('3 months');
+    const [mode] = useState('Hours');
+    const [range] = useState('3 months');
 
     // Generate calendar days for July and August 2025
     const generateCalendarDays = () => {
