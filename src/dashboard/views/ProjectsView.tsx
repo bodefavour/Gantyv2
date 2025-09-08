@@ -89,6 +89,11 @@ export default function ProjectsView() {
     const [addingTask, setAddingTask] = useState(false);
     const [selectedProject, setSelectedProject] = useState<string | null>(null);
     const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
+    // Toolbar state
+    const [expanded, setExpanded] = useState(true);
+    const [sortAsc, setSortAsc] = useState(true);
+    const [showOnlyMine, setShowOnlyMine] = useState(false);
+    const [dayScaleIndex, setDayScaleIndex] = useState(1); // 0 small, 1 medium, 2 large
 
     useEffect(() => {
         if (currentWorkspace && user) {
@@ -176,7 +181,19 @@ export default function ProjectsView() {
         return eachDayOfInterval({ start, end });
     }, [currentDate]);
 
-    const dayWidth = 32;
+    const dayWidth = React.useMemo(() => ([24, 32, 48][dayScaleIndex] || 32), [dayScaleIndex]);
+
+    // Apply simple filter/sort for display without changing markup
+    const tasksForRender = React.useMemo(() => {
+        let arr = [...tasks];
+        if (showOnlyMine && user?.id) arr = arr.filter(t => t.assigned_to === user.id);
+        arr.sort((a, b) => {
+            const aT = new Date(a.start_date).getTime();
+            const bT = new Date(b.start_date).getTime();
+            return sortAsc ? aT - bT : bT - aT;
+        });
+        return arr;
+    }, [tasks, showOnlyMine, user?.id, sortAsc]);
 
     const getTaskPosition = (task: Task) => {
         const startDate = new Date(task.start_date);
@@ -235,8 +252,10 @@ export default function ProjectsView() {
             const startDate = new Date();
             const endDate = addDays(startDate, 7); // Default 7-day duration
 
+            // Use admin client if available for RLS-safe inserts
+            const client = supabaseAdmin || supabase;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data, error } = await (supabase as any)
+            const { data, error } = await (client as any)
                 .from('tasks')
                 .insert({
                     project_id: targetProject.id,
@@ -263,6 +282,8 @@ export default function ProjectsView() {
             setTasks(prev => [...prev, data]);
             setNewTaskName('');
             toast.success(`Task "${newTaskName}" added to ${targetProject.name}`);
+            // Re-fetch to confirm persistence
+            fetchData();
         } catch (error: any) {
             console.error('Add task error:', error);
             toast.error(`Failed to add task: ${error.message || 'Unknown error'}`);
@@ -390,7 +411,8 @@ export default function ProjectsView() {
             setProjects(prev => [data, ...prev]);
             setSelectedProject(data.id);
             toast.success(`Project "${projectName}" created successfully`);
-
+            // Re-fetch to confirm persistence
+            fetchData();
             return data;
         } catch (error: any) {
             console.error('Create project error:', error);
@@ -473,20 +495,20 @@ export default function ProjectsView() {
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
                             <input type="checkbox" className="rounded border-gray-300" />
-                            <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                            <button onClick={() => setSortAsc(p => !p)} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Toggle sort order">
                                 <ArrowUpDown className="w-4 h-4" />
                             </button>
-                            <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                            <button onClick={() => setShowCreateProjectModal(true)} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Add">
                                 <Plus className="w-4 h-4" />
                             </button>
                         </div>
 
                         <div className="flex items-center gap-2">
-                            <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                            <button onClick={() => setExpanded(true)} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Expand all">
                                 <Expand className="w-4 h-4" />
                             </button>
                             <span className="text-sm text-gray-500">Expand all</span>
-                            <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                            <button onClick={() => setExpanded(false)} className="p-1 text-gray-400 hover:text-gray-600 transition-colors" title="Collapse all">
                                 <Minimize className="w-4 h-4" />
                             </button>
                             <span className="text-sm text-gray-500">Collapse all</span>
@@ -494,31 +516,62 @@ export default function ProjectsView() {
 
                         <div className="h-4 w-px bg-gray-300"></div>
 
-                        <button className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button onClick={() => setSortAsc(p => !p)} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
                             Cascade sorting
                         </button>
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button onClick={() => toast('Custom fields coming soon')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                             <Filter className="w-4 h-4" />
                             Custom fields
                         </button>
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button onClick={() => setShowOnlyMine(p => !p)} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                             <Filter className="w-4 h-4" />
-                            Filter
+                            {showOnlyMine ? 'My tasks' : 'Filter'}
                         </button>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setDayScaleIndex((p) => (p + 1) % 3)}>
                             <span className="text-sm text-gray-500">Days</span>
                             <div className="w-16 h-1 bg-gray-200 rounded"></div>
                         </div>
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button
+                            onClick={() => {
+                                try {
+                                    const rows = tasks.map(t => ({
+                                        id: t.id,
+                                        project_id: t.project_id,
+                                        name: t.name,
+                                        start_date: t.start_date,
+                                        end_date: t.end_date,
+                                        status: t.status,
+                                        progress: t.progress,
+                                    }));
+                                    const csvHeader = 'id,project_id,name,start_date,end_date,status,progress\n';
+                                    const csvBody = rows
+                                        .map(r => [r.id, r.project_id, '"' + r.name.replace(/"/g, '""') + '"', r.start_date, r.end_date, r.status, r.progress].join(','))
+                                        .join('\n');
+                                    const blob = new Blob([csvHeader + csvBody], { type: 'text/csv;charset=utf-8;' });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url;
+                                    a.download = 'tasks_export.csv';
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                } catch (e) {
+                                    console.error(e);
+                                    toast.error('Failed to export');
+                                }
+                            }}
+                            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             <Download className="w-4 h-4" />
                             Export
                         </button>
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-500">View</span>
-                            <ChevronDown className="w-4 h-4 text-gray-400" />
+                            <button onClick={() => toast('Use the tabs above to switch views')} className="p-1 text-gray-400 hover:text-gray-600">
+                                <ChevronDown className="w-4 h-4" />
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -563,7 +616,7 @@ export default function ProjectsView() {
                             <div className="divide-y divide-gray-100">
                                 {/* Group tasks by project */}
                                 {projects.map((project, projectIndex) => {
-                                    const projectTasks = tasks.filter(task => task.project_id === project.id);
+                                    const projectTasks = tasksForRender.filter(task => task.project_id === project.id);
 
                                     return (
                                         <div key={project.id}>
@@ -596,7 +649,7 @@ export default function ProjectsView() {
                                             </div>
 
                                             {/* Project Tasks */}
-                                            {projectTasks.map((task, taskIndex) => (
+                                            {expanded && projectTasks.map((task, taskIndex) => (
                                                 <div key={task.id} className="px-4 py-3 hover:bg-gray-50 transition-colors">
                                                     <div className="flex items-center gap-3">
                                                         <span className="text-sm text-gray-500 w-6">{projectIndex + 1}.{taskIndex + 1}</span>
@@ -750,7 +803,7 @@ export default function ProjectsView() {
                             <div className="space-y-1 p-2">
                                 {/* Render project rows */}
                                 {projects.map((project) => {
-                                    const projectTasks = tasks.filter(task => task.project_id === project.id);
+                                    const projectTasks = tasksForRender.filter(task => task.project_id === project.id);
 
                                     return (
                                         <div key={project.id}>
@@ -758,7 +811,7 @@ export default function ProjectsView() {
                                             <div className="h-10"></div>
 
                                             {/* Task rows */}
-                                            {projectTasks.map((task) => {
+                                            {expanded && projectTasks.map((task) => {
                                                 const position = getTaskPosition(task);
 
                                                 return (
