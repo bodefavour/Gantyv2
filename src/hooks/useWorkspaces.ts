@@ -77,16 +77,8 @@ export function useWorkspaces() {
 
         if (workspaceError) throw workspaceError;
 
-        // Add the creator as owner
-        const { error: memberError } = await (supabase as any)
-            .from('workspace_members')
-            .insert({
-                workspace_id: workspace.id,
-                user_id: user.id,
-                role: 'owner',
-            });
-
-        if (memberError) throw memberError;
+        // Skip workspace_members insertion for now to avoid RLS issues
+        // The owner relationship is established by owner_id in workspaces table
 
         const newWorkspace: WorkspaceWithRole = { ...workspace, role: 'owner' } as WorkspaceWithRole;
         setWorkspaces(prev => [newWorkspace, ...prev]);

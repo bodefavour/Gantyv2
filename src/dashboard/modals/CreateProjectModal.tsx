@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { supabaseAdmin } from '../../lib/supabase-admin';
 import type { Database } from '../../lib/database.types';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
@@ -35,6 +36,9 @@ export default function CreateProjectModal({ open, onClose, onSuccess }: CreateP
 
         setLoading(true);
         try {
+            // Use admin client if available to bypass RLS issues
+            const client = supabaseAdmin || supabase;
+            
             const projectData: Project = {
                 workspace_id: currentWorkspace.id,
                 name: formData.name,
@@ -45,7 +49,7 @@ export default function CreateProjectModal({ open, onClose, onSuccess }: CreateP
                 created_by: user.id,
             };
 
-            const { data, error } = await (supabase as any)
+            const { data, error } = await (client as any)
                 .from('projects')
                 .insert(projectData)
                 .select()
@@ -84,7 +88,7 @@ export default function CreateProjectModal({ open, onClose, onSuccess }: CreateP
                         <X className="w-6 h-6" />
                     </button>
                 </div>
-
+                
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">

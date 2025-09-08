@@ -24,12 +24,12 @@ export default function SignupPage() {
         if (!user) return;
 
         try {
-            // Check if user has completed onboarding
+            // Check if user has completed onboarding by looking for owned workspaces
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data: workspaces } = await (supabase as any)
-                .from('workspace_members')
-                .select('workspace_id')
-                .eq('user_id', user.id);
+                .from('workspaces')
+                .select('id')
+                .eq('owner_id', user.id);
 
             // If user has workspaces, they've completed onboarding
             if (workspaces && workspaces.length > 0) {
