@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
     ArrowUpDown,
     Download,
@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { supabase } from '../../lib/supabase';
+import TaskDetailsModal from '../modals/TaskDetailsModal';
 
 interface Task {
     id: string;
@@ -34,7 +35,8 @@ export default function TasksView() {
     const { currentWorkspace } = useWorkspace();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeFilter, setActiveFilter] = useState('incomplete');
+    const [activeFilter, setActiveFilter] = useState<'incomplete'|'all'|'unassigned'>('incomplete');
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
     const fetchTasks = useCallback(async () => {
         if (!currentWorkspace || !user) return;
@@ -51,7 +53,7 @@ export default function TasksView() {
           )
         `)
                 .eq('projects.workspace_id', currentWorkspace.id)
-                .eq('assigned_to', user.id)
+                // remove strict filter so My tasks page can show unassigned as an option too
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -68,9 +70,8 @@ export default function TasksView() {
     }, [fetchTasks]);
 
     const filteredTasks = tasks.filter(task => {
-        if (activeFilter === 'incomplete') {
-            return task.status !== 'completed';
-        }
+        if (activeFilter === 'incomplete') return task.status !== 'completed' && (task.assigned_to === user?.id || task.assigned_to === null);
+        if (activeFilter === 'unassigned') return task.assigned_to === null;
         return true;
     });
 
@@ -88,6 +89,7 @@ export default function TasksView() {
     }
 
     return (
+        <>
         <div className="h-full flex flex-col bg-white">
             {/* Header */}
             <div className="border-b border-gray-200 px-6 py-4">
@@ -111,9 +113,10 @@ export default function TasksView() {
 
                 {/* View Tab */}
                 <div className="mt-4">
-                    <button className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 rounded">
-                        List
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button className="px-3 py-1 text-sm font-medium text-blue-600 bg-blue-50 rounded">List</button>
+                        <div className="text-sm text-gray-500">View</div>
+                    </div>
                 </div>
             </div>
 
@@ -130,6 +133,24 @@ export default function TasksView() {
                                 }`}
                         >
                             My incomplete tasks
+                        </button>
+                        <button
+                            onClick={() => setActiveFilter('unassigned')}
+                            className={`text-sm transition-colors ${activeFilter === 'unassigned'
+                                ? 'text-blue-600 font-medium'
+                                : 'text-blue-600 hover:text-blue-700'
+                                }`}
+                        >
+                            Unassigned
+                        </button>
+                        <button
+                            onClick={() => setActiveFilter('all')}
+                            className={`text-sm transition-colors ${activeFilter === 'all'
+                                ? 'text-blue-600 font-medium'
+                                : 'text-blue-600 hover:text-blue-700'
+                                }`}
+                        >
+                            All
                         </button>
                         <button className="text-sm text-blue-600 hover:text-blue-700 transition-colors">
                             Missing a feature?
@@ -211,7 +232,7 @@ export default function TasksView() {
                     <div className="w-full">
                         <div className="divide-y divide-gray-100">
                             {filteredTasks.map((task) => (
-                                <div key={task.id} className="grid grid-cols-7 gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
+                                <div key={task.id} className="grid grid-cols-7 gap-4 px-6 py-4 hover:bg-gray-50 transition-colors cursor-pointer" onClick={() => setSelectedTaskId(task.id)}>
                                     <div className="flex items-center gap-3">
                                         <input
                                             type="checkbox"
@@ -290,5 +311,12 @@ export default function TasksView() {
                 </div>
             </div>
         </div>
+        {/* Task details modal */}
+        <TaskDetailsModal
+            open={!!selectedTaskId}
+            task={selectedTaskId ? (tasks.find(t => t.id === selectedTaskId) as any) : null}
+            onClose={() => setSelectedTaskId(null)}
+        />
+        </>
     );
 }

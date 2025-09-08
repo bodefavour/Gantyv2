@@ -27,36 +27,42 @@ export default function Sidebar() {
     const location = useLocation();
     const [daysLeft] = useState(14);
     const [isCollapsed, setIsCollapsed] = useState(true);
+    const [hoverOpen, setHoverOpen] = useState(false);
+    const isOpen = !isCollapsed || hoverOpen;
 
     return (
-        <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300`}>
+        <div
+            className={`${isOpen ? 'w-64' : 'w-16'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300`}
+            onMouseEnter={() => setHoverOpen(true)}
+            onMouseLeave={() => setHoverOpen(false)}
+        >
             {/* Logo and Collapse Button */}
             <div className="p-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
-                    {!isCollapsed && (
+                    {isOpen && (
                         <div className="flex items-center gap-2">
                             <Calendar className="w-8 h-8 text-teal-600" />
                             <span className="text-xl font-bold text-gray-900">GANTY</span>
                         </div>
                     )}
-                    {isCollapsed && (
+                    {!isOpen && (
                         <Calendar className="w-8 h-8 text-teal-600 mx-auto" />
                     )}
                     <button
                         onClick={() => setIsCollapsed(!isCollapsed)}
                         className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
                     >
-                        {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                        {!isOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                     </button>
                 </div>
-                {!isCollapsed && (
+                {isOpen && (
                     <div className="mt-2 text-sm text-gray-600">Zeem</div>
                 )}
             </div>
 
             {/* Create Project Button */}
             <div className="p-4">
-                {isCollapsed ? (
+                {!isOpen ? (
                     <button 
                         title="Create new project"
                         className="w-full bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
@@ -90,7 +96,7 @@ export default function Sidebar() {
                                         }`}
                                 >
                                     <item.icon className="w-4 h-4 flex-shrink-0" />
-                                    {!isCollapsed && (
+                                    {isOpen && (
                                         <>
                                             {item.name}
                                             <ChevronRight className="w-4 h-4 ml-auto" />
@@ -104,7 +110,7 @@ export default function Sidebar() {
             </nav>
 
             {/* Trial Info */}
-            {!isCollapsed && (
+            {isOpen && (
                 <div className="p-4 border-t border-gray-200">
                     <div className="bg-green-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-green-800">Days left {daysLeft}</div>
@@ -117,11 +123,11 @@ export default function Sidebar() {
             <div className="border-t border-gray-200">
                 <Link
                     to="/dashboard/settings"
-                    title={isCollapsed ? "Account settings" : undefined}
-                    className={`flex items-center ${isCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-7 py-3'} text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors`}
+                    title={!isOpen ? "Account settings" : undefined}
+                    className={`flex items-center ${!isOpen ? 'justify-center px-3 py-3' : 'gap-3 px-7 py-3'} text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors`}
                 >
                     <Settings className="w-4 h-4 flex-shrink-0" />
-                    {!isCollapsed && (
+                    {isOpen && (
                         <>
                             Account settings
                             <ChevronRight className="w-4 h-4 ml-auto" />

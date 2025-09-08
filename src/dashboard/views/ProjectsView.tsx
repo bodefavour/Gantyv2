@@ -215,6 +215,7 @@ export default function ProjectsView() {
     }, [currentDate]);
 
     const dayWidth = React.useMemo(() => ([24, 32, 48][dayScaleIndex] || 32), [dayScaleIndex]);
+    const visibleDays = React.useMemo(() => dateRange.slice(0, 62), [dateRange]);
 
     // Apply simple filter/sort for display without changing markup
     const tasksForRender = React.useMemo(() => {
@@ -244,6 +245,7 @@ export default function ProjectsView() {
 
     const openTaskModal = (taskId: string) => setDetailTaskId(taskId);
     const closeTaskModal = () => setDetailTaskId(null);
+    const [resizing, setResizing] = useState<{ id: string; originX: number; start: Date; end: Date; edge: 'start'|'end' } | null>(null);
 
     const getStatusIcon = (status: string, progress: number) => {
         if (status === 'completed' || progress === 100) {
@@ -854,7 +856,7 @@ export default function ProjectsView() {
                         {/* Day Headers */}
                         <div className="h-12 flex items-center border-b border-gray-100">
                             <div className="flex">
-                                {dateRange.slice(0, 62).map((date, index) => {
+                {visibleDays.map((date, index) => {
                                     const day = parseInt(format(date, 'dd'));
                                     const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                                     const isWeekend = [0, 6].includes(date.getDay());
@@ -879,13 +881,29 @@ export default function ProjectsView() {
 
                     {/* Gantt Chart Body */}
                     <div className="relative">
+                        {/* Grid overlay */}
+                        <div className="absolute inset-0 z-0 pointer-events-none">
+                            <div className="flex" style={{ width: visibleDays.length * dayWidth }}>
+                                {visibleDays.map((date, idx) => {
+                                    const isWeekend = [0, 6].includes(date.getDay());
+                                    const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+                                    return (
+                                        <div
+                                            key={idx}
+                                            className={`flex-shrink-0 h-full border-r border-gray-100 ${isWeekend ? 'bg-gray-50' : ''} ${isToday ? 'bg-blue-50/60' : ''}`}
+                                            style={{ width: dayWidth }}
+                                        />
+                                    );
+                                })}
+                            </div>
+                        </div>
                         {tasks.length === 0 ? (
                             <div className="p-12 text-center">
                                 <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                                 <p className="text-gray-500">No tasks to display</p>
                             </div>
                         ) : (
-                            <div className="space-y-1 p-2">
+                            <div className="space-y-1 p-2 relative z-10">
                                 {/* Render project rows */}
                                 {projects.map((project) => {
                                     const projectTasks = tasksForRender.filter(task => task.project_id === project.id);
@@ -893,7 +911,7 @@ export default function ProjectsView() {
                                     return (
                                         <div key={project.id}>
                                             {/* Project row - empty for spacing */}
-                                            <div className="h-10"></div>
+                                            <div className="h-10 border-b border-transparent"></div>
 
                                             {/* Task rows */}
                                             {expanded && projectTasks.map((task) => {
@@ -916,12 +934,10 @@ export default function ProjectsView() {
 
                                                 return (
                                                     <div key={task.id} className="relative h-10 flex items-center">
+                                                        {/* main bar */}
                                                         <div
                                                             className={`absolute h-6 rounded-sm opacity-90 hover:opacity-100 transition-opacity cursor-pointer flex items-center px-2 ${getStatusColor(task.status)}`}
-                                                            style={{
-                                                                left: position.left,
-                                                                width: position.width,
-                                                            }}
+                                                            style={{ left: position.left, width: position.width }}
                                                             title={`${task.name} (${format(new Date(task.start_date), 'MM/dd/yyyy')} - ${format(new Date(task.end_date), 'MM/dd/yyyy')})`}
                                                             onMouseDown={onMouseDown}
                                                             onMouseUp={onMouseUp}
@@ -934,17 +950,9 @@ export default function ProjectsView() {
                                                                 const newEnd = addDays(dragging.end, deltaDays);
                                                                 setTasks(prev => prev.map(t => t.id === task.id ? { ...t, start_date: format(newStart, 'yyyy-MM-dd'), end_date: format(newEnd, 'yyyy-MM-dd') } : t));
                                                             }}
-                                                            onMouseLeave={() => {
-                                                                if (dragging && dragging.id === task.id) {
-                                                                    setDragging(null);
-                                                                }
-                                                            }}
+                                                            onMouseLeave={() => { if (dragging && dragging.id === task.id) setDragging(null); }}
                                                             onDoubleClick={() => openTaskModal(task.id)}
-                                                            onBlur={() => { /* noop */ }}
-                                                            onContextMenu={(e) => {
-                                                                e.preventDefault();
-                                                                openTaskModal(task.id);
-                                                            }}
+                                                            onContextMenu={(e) => { e.preventDefault(); openTaskModal(task.id); }}
                                                             onMouseUpCapture={(e) => {
                                                                 if (dragging && dragging.id === task.id) {
                                                                     const deltaDays = Math.round((e.clientX - dragging.originX) / dayWidth);
@@ -957,19 +965,63 @@ export default function ProjectsView() {
                                                                 }
                                                             }}
                                                         >
+                                                            {/* left resize handle */}
+                                                            <div
+                                                                className="absolute left-0 top-0 bottom-0 w-1.5 bg-black/20 cursor-w-resize"
+                                                                onMouseDown={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setResizing({ id: task.id, originX: e.clientX, start: new Date(task.start_date), end: new Date(task.end_date), edge: 'start' });
+                                                                }}
+                                                            />
+                                                            {/* label */}
                                                             <span className="text-white text-xs font-medium truncate">
                                                                 {task.name}
                                                             </span>
+                                                            {/* right resize handle */}
+                                                            <div
+                                                                className="absolute right-0 top-0 bottom-0 w-1.5 bg-black/20 cursor-e-resize"
+                                                                onMouseDown={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setResizing({ id: task.id, originX: e.clientX, start: new Date(task.start_date), end: new Date(task.end_date), edge: 'end' });
+                                                                }}
+                                                            />
                                                         </div>
 
                                                         {/* Progress overlay */}
                                                         <div
                                                             className="absolute top-2 h-6 bg-white bg-opacity-30 rounded-sm"
-                                                            style={{
-                                                                left: position.left,
-                                                                width: position.width * (task.progress / 100)
-                                                            }}
+                                                            style={{ left: position.left, width: position.width * (task.progress / 100) }}
                                                         ></div>
+
+                                                        {/* Resize logic mouse move capture */}
+                                                        <div
+                                                            className="absolute inset-0"
+                                                            onMouseMove={(e) => {
+                                                                if (!resizing || resizing.id !== task.id) return;
+                                                                const deltaDays = Math.round((e.clientX - resizing.originX) / dayWidth);
+                                                                if (deltaDays === 0) return;
+                                                                if (resizing.edge === 'start') {
+                                                                    const newStart = addDays(resizing.start, deltaDays);
+                                                                    if (newStart <= new Date(task.end_date)) {
+                                                                        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, start_date: format(newStart, 'yyyy-MM-dd') } : t));
+                                                                    }
+                                                                } else {
+                                                                    const newEnd = addDays(resizing.end, deltaDays);
+                                                                    if (newEnd >= new Date(task.start_date)) {
+                                                                        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, end_date: format(newEnd, 'yyyy-MM-dd') } : t));
+                                                                    }
+                                                                }
+                                                            }}
+                                                            onMouseUp={(e) => {
+                                                                if (resizing && resizing.id === task.id) {
+                                                                    const deltaDays = Math.round((e.clientX - resizing.originX) / dayWidth);
+                                                                    const start = resizing.edge === 'start' ? addDays(resizing.start, deltaDays) : new Date(task.start_date);
+                                                                    const end = resizing.edge === 'end' ? addDays(resizing.end, deltaDays) : new Date(task.end_date);
+                                                                    updateTaskDates(task.id, start, end);
+                                                                    setResizing(null);
+                                                                }
+                                                            }}
+                                                        />
                                                     </div>
                                                 );
                                             })}
