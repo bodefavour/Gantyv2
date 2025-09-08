@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     ArrowUpDown,
     Download,
@@ -13,6 +13,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { supabase } from '../../lib/supabase';
 import TaskDetailsModal from '../modals/TaskDetailsModal';
+import { useTasks } from '../../hooks/useTasks';
 
 interface Task {
     id: string;
@@ -37,6 +38,19 @@ export default function TasksView() {
     const [loading, setLoading] = useState(true);
     const [activeFilter, setActiveFilter] = useState<'incomplete'|'all'|'unassigned'>('incomplete');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+    const { tasks: allTasks } = useTasks();
+
+    const filteredTasks = useMemo(() => {
+        if (activeFilter === 'incomplete') {
+            if (!user) return [];
+            return allTasks.filter(task => task.assigned_to === user.id && task.status !== 'completed');
+        }
+        if (activeFilter === 'unassigned') {
+            return allTasks.filter(task => !task.assigned_to);
+        }
+        return allTasks;
+    }, [allTasks, activeFilter, user]);
 
     const fetchTasks = useCallback(async () => {
         if (!currentWorkspace || !user) return;
@@ -68,12 +82,6 @@ export default function TasksView() {
     useEffect(() => {
         fetchTasks();
     }, [fetchTasks]);
-
-    const filteredTasks = tasks.filter(task => {
-        if (activeFilter === 'incomplete') return task.status !== 'completed' && (task.assigned_to === user?.id || task.assigned_to === null);
-        if (activeFilter === 'unassigned') return task.assigned_to === null;
-        return true;
-    });
 
     if (loading) {
         return (

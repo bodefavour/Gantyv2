@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-    Calendar,
     FolderOpen,
     Briefcase,
     CheckSquare,
@@ -41,12 +40,11 @@ export default function Sidebar() {
                 <div className="flex items-center justify-between">
                     {isOpen && (
                         <div className="flex items-center gap-2">
-                            <Calendar className="w-8 h-8 text-teal-600" />
                             <span className="text-xl font-bold text-gray-900">GANTY</span>
                         </div>
                     )}
                     {!isOpen && (
-                        <Calendar className="w-8 h-8 text-teal-600 mx-auto" />
+                        <span className="text-lg font-bold text-gray-900 mx-auto">G</span>
                     )}
                     <button
                         onClick={() => setIsCollapsed(!isCollapsed)}
@@ -65,12 +63,13 @@ export default function Sidebar() {
                 {!isOpen ? (
                     <button 
                         title="Create new project"
+                        onClick={() => window.dispatchEvent(new CustomEvent('open-create-project-modal'))}
                         className="w-full bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
                     >
                         <Plus className="w-4 h-4" />
                     </button>
                 ) : (
-                    <button className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
+                    <button onClick={() => window.dispatchEvent(new CustomEvent('open-create-project-modal'))} className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
                         <Plus className="w-4 h-4" />
                         Create new project
                     </button>

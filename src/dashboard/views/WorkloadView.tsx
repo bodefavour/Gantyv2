@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft,
     X,
@@ -34,12 +34,12 @@ type Task = {
 export default function WorkloadView() {
     const { currentWorkspace } = useWorkspace();
     const { user } = useAuth();
-    const [mode] = useState<'Hours' | 'Tasks'>('Hours');
+    const [mode, setMode] = useState<'Hours' | 'Tasks'>('Hours');
     const [range, setRange] = useState<'1 month' | '3 months' | '6 months'>('1 month');
     const [loading, setLoading] = useState(true);
     const [members, setMembers] = useState<Member[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+    const [currentMonth] = useState(new Date());
 
     useEffect(() => {
         const load = async () => {
@@ -124,7 +124,7 @@ export default function WorkloadView() {
             <div className="border-b border-gray-200 px-6 py-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                        <button onClick={() => window.history.back()} className="text-gray-400 hover:text-gray-600 transition-colors">
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div className="flex items-center gap-2">
@@ -147,15 +147,17 @@ export default function WorkloadView() {
                     <div className="flex items-center gap-6">
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-600">Mode:</span>
-                            <button className="flex items-center gap-1 text-sm text-gray-900 hover:text-gray-700 transition-colors">
-                                <span>{mode}</span>
-                                <ChevronDown className="w-4 h-4" />
-                            </button>
+                            <div className="relative">
+                                <button onClick={() => setMode(m => m === 'Hours' ? 'Tasks' : 'Hours')} className="flex items-center gap-1 text-sm text-gray-900 hover:text-gray-700 transition-colors">
+                                    <span>{mode}</span>
+                                    <ChevronDown className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
 
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-600">Range:</span>
-                            <button className="flex items-center gap-1 text-sm text-gray-900 hover:text-gray-700 transition-colors">
+                            <button onClick={() => setRange(r => r === '1 month' ? '3 months' : r === '3 months' ? '6 months' : '1 month')} className="flex items-center gap-1 text-sm text-gray-900 hover:text-gray-700 transition-colors">
                                 <span>{range}</span>
                                 <ChevronDown className="w-4 h-4" />
                             </button>
@@ -167,7 +169,7 @@ export default function WorkloadView() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 hover:text-gray-900 transition-colors border border-gray-300 rounded">
+                        <button onClick={() => alert('Filter panel coming soon')} className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 hover:text-gray-900 transition-colors border border-gray-300 rounded">
                             <Filter className="w-4 h-4" />
                             Filter
                         </button>
@@ -177,7 +179,21 @@ export default function WorkloadView() {
                                 <div className="w-8 h-1 bg-gray-400 rounded-full"></div>
                             </div>
                         </div>
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button
+                            onClick={() => {
+                                try {
+                                    const days = monthRange.map(d => format(d,'yyyy-MM-dd'));
+                                    const header = ['member','email',...days].join(',') + '\n';
+                                    const rows = members.map(m => {
+                                        const arr = hoursByMemberByDay.get(m.user_id) || [];
+                                        return [m.profiles?.first_name || m.profiles?.email, m.profiles?.email, ...arr].join(',');
+                                    }).join('\n');
+                                    const blob = new Blob([header+rows], { type:'text/csv;charset=utf-8;' });
+                                    const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='workload_export.csv'; a.click(); URL.revokeObjectURL(url);
+                                } catch(e){ console.error(e); }
+                            }}
+                            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             <Download className="w-4 h-4" />
                             Export
                         </button>

@@ -1,4 +1,6 @@
 import { Search, UserPlus, ChevronDown } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import toast from 'react-hot-toast';
 
 interface WorkspaceMember {
     id: string;
@@ -17,6 +19,8 @@ interface PeopleViewProps {
 }
 
 export default function PeopleView({ members, onInviteUser }: PeopleViewProps) {
+    const [query, setQuery] = useState('');
+    const filtered = useMemo(() => members.filter(m => (m.profiles.first_name || '').toLowerCase().includes(query.toLowerCase()) || m.profiles.email.toLowerCase().includes(query.toLowerCase())), [members, query]);
     return (
         <div className="flex-1 p-6">
             {/* Tab Navigation */}
@@ -42,6 +46,8 @@ export default function PeopleView({ members, onInviteUser }: PeopleViewProps) {
                         <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2" />
                         <input
                             type="text"
+                            value={query}
+                            onChange={(e)=>setQuery(e.target.value)}
                             placeholder="Search by name or email"
                             className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg w-80 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                         />
@@ -66,7 +72,7 @@ export default function PeopleView({ members, onInviteUser }: PeopleViewProps) {
                 </div>
 
                 {/* Members List */}
-                {members.length === 0 ? (
+                {filtered.length === 0 ? (
                     <div className="p-8 text-center">
                         <p className="text-gray-500 mb-4">No team members found</p>
                         <button
@@ -77,7 +83,7 @@ export default function PeopleView({ members, onInviteUser }: PeopleViewProps) {
                         </button>
                     </div>
                 ) : (
-                    members.map((member) => (
+                    filtered.map((member) => (
                         <div key={member.id} className="grid grid-cols-3 gap-4 px-6 py-4 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors">
                             {/* User Info */}
                             <div className="flex items-center gap-3">
@@ -94,14 +100,17 @@ export default function PeopleView({ members, onInviteUser }: PeopleViewProps) {
 
                             {/* Project Rights */}
                             <div className="flex items-center">
-                                <span className="font-medium text-gray-900 capitalize">
-                                    {member.role.replace('_', ' ')}
-                                </span>
+                                <button
+                                    onClick={() => toast('Role change feature coming soon')}
+                                    className="flex items-center gap-1 font-medium text-gray-900 capitalize hover:text-blue-600"
+                                >
+                                    {member.role.replace('_', ' ')} <ChevronDown className="w-4 h-4" />
+                                </button>
                             </div>
 
                             {/* Type and Actions */}
                             <div className="flex items-center justify-between">
-                                <button className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                                <button onClick={() => toast('Rate type change coming soon')} className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                                     per hour <ChevronDown className="w-4 h-4" />
                                 </button>
                                 {member.role === 'owner' && (

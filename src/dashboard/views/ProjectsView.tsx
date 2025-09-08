@@ -110,6 +110,13 @@ export default function ProjectsView() {
         }
     }, [currentWorkspace, user]);
 
+    // Listen to global create project trigger (from sidebar button)
+    useEffect(() => {
+        const handler = () => setShowCreateProjectModal(true);
+        window.addEventListener('open-create-project-modal', handler as EventListener);
+        return () => window.removeEventListener('open-create-project-modal', handler as EventListener);
+    }, []);
+
     // Persist active view to avoid losing state when navigating away/back
     useEffect(() => {
         try {
@@ -299,6 +306,7 @@ export default function ProjectsView() {
             const { data, error } = await (client as any)
                 .from('tasks')
                 .insert({
+                    workspace_id: currentWorkspace!.id,
                     project_id: targetProject.id,
                     name: newTaskName.trim(),
                     description: null,
@@ -863,6 +871,7 @@ export default function ProjectsView() {
                                                 const { data, error } = await (client as any)
                                                     .from('tasks')
                                                     .insert({
+                                                        workspace_id: currentWorkspace!.id,
                                                         project_id: targetProject.id,
                                                         name: milestoneName.trim(),
                                                         description: 'Milestone',

@@ -23,6 +23,7 @@ export default function ReportsView() {
     const { user } = useAuth();
     const [projects, setProjects] = useState<Array<{ id: string; status: string }>>([]);
     const [loading, setLoading] = useState(true);
+    const [milestones, setMilestones] = useState<Array<{ id: string; name: string; date: string }>>([]);
 
     useEffect(() => {
         const load = async () => {
@@ -41,9 +42,26 @@ export default function ReportsView() {
                     .eq('workspace_id', currentWorkspace.id);
                 if (error) throw error;
                 setProjects(data || []);
+
+                // Fetch milestone tasks (duration 0 OR same start/end) across these projects
+                if ((data || []).length) {
+                    const ids = (data || []).map((p: any) => p.id);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const { data: taskData, error: taskErr } = await (client as any)
+                        .from('tasks')
+                        .select('id,name,start_date,end_date,duration,project_id')
+                        .in('project_id', ids);
+                    if (taskErr) throw taskErr;
+                    const ms = (taskData || []).filter((t: any) => t.duration === 0 || t.start_date === t.end_date)
+                        .map((t: any) => ({ id: t.id, name: t.name, date: t.start_date }));
+                    setMilestones(ms);
+                } else {
+                    setMilestones([]);
+                }
             } catch (e) {
                 console.error(e);
                 setProjects([]);
+                setMilestones([]);
             } finally {
                 setLoading(false);
             }
@@ -84,7 +102,7 @@ export default function ReportsView() {
             <div className="border-b border-gray-200 px-6 py-4">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                        <button onClick={() => window.history.back()} className="text-gray-400 hover:text-gray-600 transition-colors">
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div className="flex items-center gap-2">
@@ -132,45 +150,40 @@ export default function ReportsView() {
                     {/* Milestone Timeline */}
                     <div className="bg-white">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">Milestone timeline</h3>
-                        <p className="text-sm text-gray-600 mb-6">
-                            Get visual representation of your project's milestones along a timeline.
+                        <p className="text-sm text-gray-600 mb-4">
+                            Visual representation of milestone (zero-duration) tasks across projects.
                         </p>
-
-                        <div className="relative h-64 bg-gray-50 rounded-lg p-6">
-                            {/* Timeline */}
-                            <div className="relative h-full">
-                                {/* Vertical line */}
-                                <div className="absolute left-8 top-8 bottom-8 w-0.5 bg-gray-300"></div>
-
-                                {/* Today marker */}
-                                <div className="absolute left-6 top-4 w-4 h-6 bg-gray-800 text-white text-xs flex items-center justify-center rounded">
-                                    Today
-                                </div>
-
-                                {/* Milestones */}
-                                <div className="absolute left-4 top-16 w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
-                                <div className="absolute left-20 top-14 text-sm">
-                                    <div className="font-medium text-gray-900">Milestone 2</div>
-                                    <div className="text-xs text-gray-500">Feb 17, 2025</div>
-                                </div>
-
-                                <div className="absolute left-4 top-32 w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
-                                <div className="absolute left-20 top-30 text-sm">
-                                    <div className="font-medium text-gray-900">Milestone 2</div>
-                                    <div className="text-xs text-gray-500">Apr 02, 2025</div>
-                                </div>
-
-                                <div className="absolute left-4 top-48 w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-sm"></div>
-                                <div className="absolute left-20 top-46 text-sm">
-                                    <div className="font-medium text-gray-900">Milestone 3</div>
-                                    <div className="text-xs text-gray-500">Jul 15, 2025</div>
-                                </div>
-
-                                {/* Month labels */}
-                                <div className="absolute bottom-4 left-4 text-xs text-gray-500 font-medium">Jan</div>
-                                <div className="absolute bottom-4 left-24 text-xs text-gray-500 font-medium">Apr</div>
-                                <div className="absolute bottom-4 right-8 text-xs text-gray-500 font-medium">Jul</div>
-                            </div>
+                        <div className="relative h-64 bg-gray-50 rounded-lg p-4 overflow-hidden">
+                            {milestones.length === 0 ? (
+                                <div className="flex items-center justify-center h-full text-sm text-gray-500">No milestones yet</div>
+                            ) : (
+                                (() => {
+                                    const dates = milestones.map(m => new Date(m.date));
+                                    const min = new Date(Math.min(...dates.map(d => d.getTime())));
+                                    const max = new Date(Math.max(...dates.map(d => d.getTime())));
+                                    const span = Math.max(1, (max.getTime() - min.getTime()) / (1000*60*60*24));
+                                    return (
+                                        <div className="absolute inset-0">
+                                            {/* horizontal line */}
+                                            <div className="absolute left-8 right-4 top-1/2 h-0.5 bg-gray-300" />
+                                            {milestones.map((m,i) => {
+                                                const d = new Date(m.date);
+                                                const offsetPct = ((d.getTime() - min.getTime()) / (1000*60*60*24)) / span;
+                                                const left = 8 + (offsetPct * (window.innerWidth > 900 ? 500 : 300));
+                                                return (
+                                                    <div key={m.id} style={{ left, top: `calc(50% - ${12 + (i%3)*36}px)` }} className="absolute">
+                                                        <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white shadow" />
+                                                        <div className="ml-4 -mt-2">
+                                                            <div className="text-xs font-medium text-gray-900 truncate max-w-[140px]">{m.name}</div>
+                                                            <div className="text-[10px] text-gray-500">{new Date(m.date).toLocaleDateString()}</div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })()
+                            )}
                         </div>
                     </div>
 

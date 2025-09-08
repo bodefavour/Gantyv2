@@ -1,216 +1,126 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Briefcase } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Briefcase, Plus, MoreHorizontal } from 'lucide-react';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { supabaseAdmin } from '../../lib/supabase-admin';
+import toast from 'react-hot-toast';
+
+interface Portfolio { id: string; name: string; description: string | null; created_at: string; }
+interface Project { id: string; name: string; status: string; start_date: string; end_date: string | null; progress: number; }
 
 export default function PortfoliosView() {
     const { currentWorkspace } = useWorkspace();
-    const [projects, setProjects] = useState<Array<{ id: string; name: string; status: string; start_date: string | null; end_date: string | null }>>([]);
+    const { user } = useAuth();
     const [loading, setLoading] = useState(true);
-    const [creating, setCreating] = useState(false);
-    const [activeTab, setActiveTab] = useState<'projects'|'gantt'|'list'|'workload'|'dashboard'>('projects');
+    const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+    const [projects, setProjects] = useState<Project[]>([]);
+    const [portfolioProjects, setPortfolioProjects] = useState<Record<string, string[]>>({});
 
     useEffect(() => {
         const load = async () => {
-            if (!currentWorkspace) { setProjects([]); setLoading(false); return; }
+            if (!currentWorkspace || !user) { setLoading(false); return; }
             setLoading(true);
             try {
                 const client = supabaseAdmin || supabase;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const { data, error } = await (client as any)
-                    .from('projects')
-                    .select('id,name,status,start_date,end_date')
-                    .eq('workspace_id', currentWorkspace.id)
-                    .order('name', { ascending: true });
-                if (error) throw error;
-                setProjects(data || []);
-            } catch (e) {
-                console.error(e);
-                setProjects([]);
-            } finally {
-                setLoading(false);
-            }
+                const { data: pf, error: pe } = await (client as any).from('portfolios').select('*').eq('workspace_id', currentWorkspace.id).order('created_at',{ascending:false});
+                if (pe) throw pe;
+                setPortfolios(pf || []);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data: pr, error: pre } = await (client as any).from('projects').select('*').eq('workspace_id', currentWorkspace.id);
+                if (pre) throw pre;
+                setProjects(pr || []);
+                if ((pf||[]).length) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const { data: mapRows, error: mapErr } = await (client as any).from('portfolio_projects').select('portfolio_id,project_id').in('portfolio_id', (pf||[]).map((p: any)=>p.id));
+                    if (mapErr) throw mapErr;
+                    const map: Record<string,string[]> = {};
+                    (mapRows||[]).forEach((r:any)=>{ map[r.portfolio_id] = map[r.portfolio_id] || []; map[r.portfolio_id].push(r.project_id); });
+                    setPortfolioProjects(map);
+                } else setPortfolioProjects({});
+            } catch(e:any) {
+                console.error(e); toast.error(e.message||'Failed loading portfolios');
+            } finally { setLoading(false); }
         };
         load();
-    }, [currentWorkspace]);
+    }, [currentWorkspace, user]);
 
-    const grouped = useMemo(() => {
-        const g: Record<string, typeof projects> = {};
-        for (const p of projects) {
-            const key = p.status || 'unknown';
-            if (!g[key]) g[key] = [];
-            g[key].push(p);
-        }
-        return g;
-    }, [projects]);
+    const createPortfolio = async () => {
+        if (!currentWorkspace || !user) return toast.error('Workspace required');
+        const name = window.prompt('Portfolio name:');
+        if (!name) return;
+        try {
+            const client = supabaseAdmin || supabase;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data, error } = await (client as any).from('portfolios').insert({ workspace_id: currentWorkspace.id, name: name.trim(), description: null, owner_id: user.id }).select().single();
+            if (error) throw error;
+            setPortfolios(prev=>[data,...prev]);
+            // auto-link all existing projects
+            if (projects.length) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { error: linkErr } = await (client as any).from('portfolio_projects').insert(projects.map(p=>({ portfolio_id: data.id, project_id: p.id })));
+                if (linkErr) console.warn('Link warning', linkErr.message);
+                setPortfolioProjects(prev=>({...prev, [data.id]: projects.map(p=>p.id)}));
+            }
+            toast.success('Portfolio created');
+        } catch(e:any){ console.error(e); toast.error(e.message||'Create failed'); }
+    };
 
     return (
-        <div className="p-6">
-            <div className="text-center py-16">
-                <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                    Get a high-level picture of your projects with portfolios
-                </h2>
-                <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
-                    Manage plans, resources, and budgets and analyze risks across multiple projects.
-                </p>
-                <button
-                    disabled={creating}
-                    onClick={async () => {
-                        if (!currentWorkspace) return;
-                        const name = window.prompt('Portfolio name?');
-                        if (!name) return;
-                        setCreating(true);
-                        const client = supabaseAdmin || supabase;
-                        try {
-                            // Create portfolio
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            const { data: p, error: e1 } = await (client as any)
-                                .from('portfolios')
-                                .insert({ workspace_id: currentWorkspace.id, name })
-                                .select()
-                                .single();
-                            if (e1) throw e1;
-
-                            // Ask to link visible projects
-                            if (projects.length > 0 && window.confirm('Link all current projects to this portfolio?')) {
-                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                const { error: e2 } = await (client as any)
-                                    .from('portfolio_projects')
-                                    .insert(projects.map(pr => ({ portfolio_id: p.id, project_id: pr.id })));
-                                if (e2) throw e2;
-                            }
-                            alert('Portfolio created');
-                        } catch (err) {
-                            console.error(err);
-                            alert('Failed to create portfolio');
-                        } finally {
-                            setCreating(false);
-                        }
-                    }}
-                    className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                    {creating ? 'Creating…' : 'Create'}
+        <div className="h-full flex flex-col bg-white">
+            <div className="border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-gray-600" />
+                    <h1 className="text-lg font-medium text-gray-900">Portfolios</h1>
+                </div>
+                <button onClick={createPortfolio} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+                    <Plus className="w-4 h-4" /> New portfolio
                 </button>
             </div>
 
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-center gap-4 mb-6">
-                    <div className="w-8 h-8 bg-yellow-100 rounded flex items-center justify-center">
-                        <Briefcase className="w-4 h-4 text-yellow-600" />
+            <div className="p-6 flex-1 overflow-auto">
+                {loading ? (
+                    <div className="text-gray-500">Loading...</div>
+                ) : portfolios.length === 0 ? (
+                    <div className="text-center py-20">
+                        <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-600 mb-4">No portfolios yet</p>
+                        <button onClick={createPortfolio} className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 text-sm">Create your first portfolio</button>
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-900">Team building</h3>
-                </div>
-
-                <div className="flex border-b border-gray-200 mb-6">
-                    {[
-                        { id: 'projects', label: 'Projects' },
-                        { id: 'gantt', label: 'Gantt Chart' },
-                        { id: 'list', label: 'List' },
-                        { id: 'workload', label: 'Workload' },
-                        { id: 'dashboard', label: 'Dashboard' },
-                    ].map(({id,label}) => (
-                        <button
-                            key={id}
-                            onClick={() => setActiveTab(id as any)}
-                            className={`px-4 py-2 text-sm font-medium border-b-2 ${activeTab === id
-                                    ? 'border-blue-500 text-blue-600'
-                                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
-
-                {activeTab === 'projects' && (
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between text-sm font-medium text-gray-700 border-b border-gray-200 pb-2">
-                        <span>Project name</span>
-                        <div className="flex items-center gap-16">
-                            <span>Status</span>
-                            <span>Start date</span>
-                            <span>End date</span>
-                        </div>
-                    </div>
-
-                    {loading ? (
-                        <div className="text-center py-8 text-gray-500">Loading…</div>
-                    ) : projects.length === 0 ? (
-                        <div className="text-center py-8 text-gray-500">No projects found</div>
-                    ) : (
-                        Object.entries(grouped).map(([status, list]) => (
-                            <div key={status}>
-                                <div className="text-xs uppercase text-gray-500 font-semibold mt-6 mb-2">{status.replace('_', ' ')}</div>
-                                <div className="divide-y divide-gray-100">
-                                    {list.map((p) => (
-                                        <div key={p.id} className="flex items-center justify-between py-2">
-                                            <span className="text-gray-900">{p.name}</span>
-                                            <div className="flex items-center gap-16 text-sm text-gray-600">
-                                                <span className="capitalize">{p.status?.replace('_', ' ') || '—'}</span>
-                                                <span>{p.start_date ? new Date(p.start_date).toLocaleDateString() : '—'}</span>
-                                                <span>{p.end_date ? new Date(p.end_date).toLocaleDateString() : '—'}</span>
-                                            </div>
+                ) : (
+                    <div className="space-y-6">
+                        {portfolios.map(p => {
+                            const projIds = portfolioProjects[p.id] || [];
+                            const projs = projects.filter(pr => projIds.includes(pr.id));
+                            return (
+                                <div key={p.id} className="border border-gray-200 rounded-lg">
+                                    <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+                                        <div className="flex items-center gap-2 font-medium text-gray-900">
+                                            <Briefcase className="w-4 h-4 text-gray-500" /> {p.name}
+                                            <span className="text-xs text-gray-500">({projs.length} projects)</span>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))
-                    )}
-                </div>
-                )}
-                {activeTab === 'gantt' && (
-                    <div className="overflow-x-auto border border-gray-200 rounded">
-                        <div className="min-w-[800px]">
-                            <div className="flex text-xs text-gray-600 border-b border-gray-200">
-                                {Array.from({ length: 12 }).map((_, i) => (
-                                    <div key={i} className="flex-1 text-center py-2 border-r last:border-r-0">M{i+1}</div>
-                                ))}
-                            </div>
-                            {projects.map(p => (
-                                <div key={p.id} className="h-10 border-b last:border-b-0 relative">
-                                    <div className="absolute left-0 top-0 bottom-0 px-3 flex items-center text-sm text-gray-700">
-                                        {p.name}
+                                        <button onClick={() => toast('Portfolio options coming soon')} className="text-gray-400 hover:text-gray-600"><MoreHorizontal className="w-4 h-4" /></button>
+                                    </div>
+                                    <div>
+                                        <div className="grid grid-cols-5 gap-4 px-4 py-2 text-xs font-medium text-gray-600 border-b border-gray-100">
+                                            <span>Name</span><span>Status</span><span>Progress</span><span>Start</span><span>End</span>
+                                        </div>
+                                        {projs.length === 0 ? (
+                                            <div className="px-4 py-4 text-sm text-gray-500">No linked projects</div>
+                                        ) : projs.map(pr => (
+                                            <div key={pr.id} className="grid grid-cols-5 gap-4 px-4 py-2 text-sm hover:bg-gray-50">
+                                                <span className="font-medium text-gray-900 truncate">{pr.name}</span>
+                                                <span className="capitalize text-gray-700">{pr.status.replace('_',' ')}</span>
+                                                <span className="text-gray-700">{pr.progress}%</span>
+                                                <span className="text-gray-500">{new Date(pr.start_date).toLocaleDateString()}</span>
+                                                <span className="text-gray-500">{pr.end_date ? new Date(pr.end_date).toLocaleDateString() : '—'}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-                {activeTab === 'list' && (
-                    <div>
-                        <div className="grid grid-cols-3 gap-4 px-2 py-2 text-sm font-medium text-gray-700 border-b"> 
-                            <span>Name</span>
-                            <span>Status</span>
-                            <span>Dates</span>
-                        </div>
-                        {projects.map(p => (
-                            <div key={p.id} className="grid grid-cols-3 gap-4 px-2 py-2 text-sm border-b last:border-b-0">
-                                <span className="text-gray-900">{p.name}</span>
-                                <span className="capitalize text-gray-600">{p.status?.replace('_',' ') || '—'}</span>
-                                <span className="text-gray-600">{p.start_date || '—'} → {p.end_date || '—'}</span>
-                            </div>
-                        ))}
-                    </div>
-                )}
-                {activeTab === 'workload' && (
-                    <div className="text-sm text-gray-600">Workload summary: {projects.length} projects loaded.</div>
-                )}
-                {activeTab === 'dashboard' && (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="text-sm text-gray-500">Projects</div>
-                            <div className="text-2xl font-semibold text-gray-900">{projects.length}</div>
-                        </div>
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="text-sm text-gray-500">Active</div>
-                            <div className="text-2xl font-semibold text-gray-900">{projects.filter(p=>p.status==='active').length}</div>
-                        </div>
-                        <div className="bg-white border border-gray-200 rounded-lg p-4">
-                            <div className="text-sm text-gray-500">Completed</div>
-                            <div className="text-2xl font-semibold text-gray-900">{projects.filter(p=>p.status==='completed').length}</div>
-                        </div>
+                            );
+                        })}
                     </div>
                 )}
             </div>
