@@ -98,8 +98,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
             setWorkspaces(userWorkspaces);
 
+            // Try to restore last selected workspace from localStorage
+            const lastSelectedId = typeof window !== 'undefined' ? localStorage.getItem('lastSelectedWorkspaceId') : null;
+
             if (userWorkspaces.length > 0 && !currentWorkspace) {
-                setCurrentWorkspace(userWorkspaces[0]);
+                const restored = lastSelectedId && userWorkspaces.find(w => w.id === lastSelectedId);
+                setCurrentWorkspace(restored || userWorkspaces[0]);
             } else if (userWorkspaces.length === 0) {
                 await createDefaultWorkspace();
             }
@@ -154,12 +158,28 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         fetchWorkspaces();
     }, [fetchWorkspaces]);
 
+    // Persist current workspace selection
+    useEffect(() => {
+        if (currentWorkspace && typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('lastSelectedWorkspaceId', currentWorkspace.id);
+            } catch {}
+        }
+    }, [currentWorkspace]);
+
     return (
         <WorkspaceContext.Provider
             value={{
                 workspaces,
                 currentWorkspace,
-                setCurrentWorkspace,
+                setCurrentWorkspace: (ws: Workspace) => {
+                    setCurrentWorkspace(ws);
+                    try {
+                        if (typeof window !== 'undefined') {
+                            localStorage.setItem('lastSelectedWorkspaceId', ws.id);
+                        }
+                    } catch {}
+                },
                 loading,
                 refetchWorkspaces: fetchWorkspaces
             }}

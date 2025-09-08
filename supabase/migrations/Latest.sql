@@ -226,6 +226,12 @@ create policy "profiles_update_own"
   using (id = auth.uid())
   with check (id = auth.uid());
 
+-- Allow users to insert their own profile row
+create policy "profiles_insert_self"
+  on profiles for insert
+  to authenticated
+  with check (id = auth.uid());
+
 -- Workspaces policies
 create policy "workspaces_select_member"
   on workspaces for select

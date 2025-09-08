@@ -302,6 +302,9 @@ export default function OnboardingFlow() {
                 workspaceId = newWorkspace.id;
             }
 
+            // Persist selected workspace for the dashboard
+            try { localStorage.setItem('lastSelectedWorkspaceId', workspaceId); } catch {}
+
             // Create the project
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data: project, error: projectError } = await (supabase as any)
@@ -409,6 +412,9 @@ export default function OnboardingFlow() {
                 });
 
             if (workspaceError) throw workspaceError;
+
+            // Persist selected workspace for the dashboard
+            try { if (workspace?.id) localStorage.setItem('lastSelectedWorkspaceId', workspace.id as string); } catch {}
 
             // Create first project if name provided
             if (data.projectName.trim()) {

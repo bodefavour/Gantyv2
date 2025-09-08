@@ -39,6 +39,7 @@ import CreateProjectModal from '../modals/CreateProjectModal';
 
 interface Project {
     id: string;
+    workspace_id: string;
     name: string;
     description: string | null;
     start_date: string;
@@ -120,7 +121,7 @@ export default function ProjectsView() {
             console.log('Fetching projects for workspace:', currentWorkspace.id);
 
             // Use admin client if available to bypass RLS issues
-            const client = supabaseAdmin || supabase;
+            const client = supabase; // prefer RLS-scoped client
 
             // Fetch projects with better error handling
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -145,13 +146,13 @@ export default function ProjectsView() {
             }
 
             // Fetch all tasks for all projects
+            // Fetch all tasks for the workspace
             if (fetchedProjects.length > 0) {
-                const projectIds = fetchedProjects.map((p: Project) => p.id);
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const { data: tasksData, error: tasksError } = await (client as any)
                     .from('tasks')
                     .select('*')
-                    .in('project_id', projectIds)
+                    .eq('workspace_id', currentWorkspace.id)
                     .order('start_date');
 
                 if (tasksError) {
@@ -168,8 +169,9 @@ export default function ProjectsView() {
 
             // Fetch workspace members (profiles joined)
             try {
+                const clientJoin = supabaseAdmin || supabase;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const { data: membersData, error: membersError } = await (client as any)
+                const { data: membersData, error: membersError } = await (clientJoin as any)
                     .from('workspace_members')
                     .select(`
                         id,
@@ -273,6 +275,10 @@ export default function ProjectsView() {
             toast.error('User not authenticated');
             return;
         }
+        if (!currentWorkspace) {
+            toast.error('No workspace selected');
+            return;
+        }
 
         setAddingTask(true);
         try {
@@ -280,11 +286,12 @@ export default function ProjectsView() {
             const endDate = addDays(startDate, 7); // Default 7-day duration
 
             // Use admin client if available for RLS-safe inserts
-            const client = supabaseAdmin || supabase;
+        const client = supabase; // prefer RLS-scoped client
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data, error } = await (client as any)
                 .from('tasks')
                 .insert({
+            workspace_id: targetProject?.workspace_id || currentWorkspace.id,
                     project_id: targetProject.id,
                     name: newTaskName.trim(),
                     description: null,
