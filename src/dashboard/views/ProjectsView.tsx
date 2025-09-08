@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import {
     Plus,
@@ -26,7 +27,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { supabaseAdmin } from '../../lib/supabase-admin';
 import { format, addDays, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from 'date-fns';
-import toast from 'react-hot-toast';
 
 // Import view components (will be implemented)
 // Keep main content as-is for Gantt; import other views for tab switching
@@ -89,6 +89,7 @@ export default function ProjectsView() {
         const saved = typeof window !== 'undefined' ? localStorage.getItem('projectsActiveView') : null;
         return saved || 'gantt';
     });
+    const [showProjectPicker, setShowProjectPicker] = useState(false);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [newTaskName, setNewTaskName] = useState('');
     const [addingTask, setAddingTask] = useState(false);
@@ -489,6 +490,13 @@ export default function ProjectsView() {
             toast.error(err.message || 'Failed to send invite');
         }
     };
+
+    // Auto-open project picker if user lands on "All Projects" and multiple projects exist
+    useEffect(() => {
+        if (!loading && projects.length > 1 && !selectedProject) {
+            setShowProjectPicker(true);
+        }
+    }, [loading, projects.length, selectedProject]);
 
     if (loading) {
         return (
@@ -1223,6 +1231,39 @@ export default function ProjectsView() {
                     </div>
                 </div>
             </div>
+
+            {/* Project Picker Modal */}
+            {showProjectPicker && (
+                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-lg max-h-[80vh] overflow-y-auto p-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-lg font-semibold text-gray-900">Select a Project</h2>
+                            <button onClick={() => setShowProjectPicker(false)} className="text-gray-400 hover:text-gray-600">×</button>
+                        </div>
+                        {projects.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500">No projects yet</div>
+                        ) : (
+                            <ul className="divide-y divide-gray-100">
+                                {projects.map(p => (
+                                    <li key={p.id}>
+                                        <button
+                                            onClick={() => { setSelectedProject(p.id); setShowProjectPicker(false); toast.success(`Switched to ${p.name}`); }}
+                                            className="w-full text-left px-3 py-3 hover:bg-gray-50 flex items-center gap-3"
+                                        >
+                                            <span className="flex-1 font-medium text-gray-900 truncate">{p.name}</span>
+                                            <span className="text-xs text-gray-500">{p.status || '—'}</span>
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        <div className="pt-4 flex justify-between gap-3">
+                            <button onClick={() => setShowCreateProjectModal(true)} className="text-sm text-blue-600 hover:text-blue-700">Create new project</button>
+                            <button onClick={() => setShowProjectPicker(false)} className="text-sm text-gray-600 hover:text-gray-800">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Create Project Modal */}
             <CreateProjectModal
