@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
     Plus,
@@ -68,6 +67,14 @@ interface Task {
     created_at: string;
 }
 
+interface Dependency {
+    id?: string;
+    predecessor_id: string;
+    successor_id: string;
+    type: 'finish_to_start' | 'start_to_start' | 'finish_to_finish' | 'start_to_finish';
+    lag: number;
+}
+
 const viewTabs = [
     { id: 'gantt', name: 'Gantt chart', icon: BarChart3 },
     { id: 'board', name: 'Board', icon: Table },
@@ -102,8 +109,22 @@ export default function ProjectsView() {
     const [dayScaleIndex, setDayScaleIndex] = useState(1); // 0 small, 1 medium, 2 large
     const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
     const [dragging, setDragging] = useState<{ id: string; originX: number; start: Date; end: Date } | null>(null);
+    const [multiSelect, setMultiSelect] = useState<string[]>([]);
+    const [creatingDependency, setCreatingDependency] = useState<{ fromTaskId: string } | null>(null);
+    const [zoomLevel, setZoomLevel] = useState<'day'|'week'|'month'>('day');
+    const ganttScrollRef = useRef<HTMLDivElement|null>(null);
+    // edgeScrollRef removed (unused)
     const [showCustomFieldsPanel, setShowCustomFieldsPanel] = useState(false);
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [feedback, setFeedback] = useState<{open:boolean; title:string; message:string; type:'success'|'error'|'info'}>({open:false,title:'',message:'',type:'info'});
+    const showModalMsg = (title:string, message:string, type:'success'|'error'|'info'='info') => setFeedback({open:true,title,message,type});
+    const closeModalMsg = () => setFeedback(p=>({...p,open:false}));
+    void showModalMsg; void closeModalMsg;
+    const [dependencies, setDependencies] = useState<Dependency[]>([]);
+    const [criticalPath, setCriticalPath] = useState<Set<string>>(new Set());
+    const [showCriticalPath, setShowCriticalPath] = useState(false);
+    const [multiDragOriginals, setMultiDragOriginals] = useState<Record<string,{start:Date; end:Date}>|null>(null);
+    const [taskOptions, setTaskOptions] = useState<{open:boolean; task: Task | null}>({open:false, task:null});
 
     useEffect(() => {
         if (currentWorkspace && user) {
@@ -178,8 +199,26 @@ export default function ProjectsView() {
                 const fetchedTasks = tasksData || [];
                 console.log('Fetched tasks:', fetchedTasks);
                 setTasks(fetchedTasks);
+                // Fetch dependencies
+                if (fetchedTasks.length > 0) {
+                    try {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const { data: depData, error: depError } = await (client as any)
+                            .from('task_dependencies')
+                            .select('*')
+                            .in('predecessor_id', fetchedTasks.map((t: Task)=>t.id));
+                        if (depError) throw depError;
+                        setDependencies(depData || []);
+                    } catch (depErr) {
+                        console.warn('Dependency fetch error', depErr);
+                        setDependencies([]);
+                    }
+                } else {
+                    setDependencies([]);
+                }
             } else {
                 setTasks([]);
+                setDependencies([]);
             }
 
             // Fetch workspace members (profiles joined)
@@ -208,7 +247,7 @@ export default function ProjectsView() {
             }
         } catch (error: any) {
             console.error('Error fetching data:', error);
-            toast.error(`Failed to load projects: ${error.message || 'Unknown error'}`);
+            showModalMsg('Load error', `Failed to load projects: ${error.message || 'Unknown error'}`,'error');
             setProjects([]);
             setTasks([]);
             setMembers([]);
@@ -217,15 +256,86 @@ export default function ProjectsView() {
         }
     };
 
+    // Critical path recompute when toggled or data changes
+    useEffect(() => {
+        if (!showCriticalPath) { setCriticalPath(new Set()); return; }
+        // Simple longest path using finish_to_start dependencies only
+        const rel = dependencies.filter(d => d.type === 'finish_to_start');
+        const preds: Record<string,string[]> = {};
+        tasks.forEach(t => { preds[t.id] = []; });
+        rel.forEach(d => { if (!preds[d.successor_id]) preds[d.successor_id] = []; preds[d.successor_id].push(d.predecessor_id); });
+        const memo: Record<string,{len:number; prev:string|null}> = {};
+        const duration = (t: Task) => Math.max(1, differenceInDays(new Date(t.end_date), new Date(t.start_date))+1);
+        const dfs = (id:string): {len:number; prev:string|null} => {
+            if (memo[id]) return memo[id];
+            const p = preds[id] || [];
+            if (p.length === 0) { memo[id] = { len: duration(tasks.find(t=>t.id===id)!), prev: null }; return memo[id]; }
+            let bestPrev: string|null=null; let bestLen=0;
+            p.forEach(pid => { const r = dfs(pid); if (r.len > bestLen) { bestLen = r.len; bestPrev = pid; } });
+            memo[id] = { len: bestLen + duration(tasks.find(t=>t.id===id)!), prev: bestPrev }; return memo[id];
+        };
+        tasks.forEach(t => dfs(t.id));
+        let endTask: string|undefined; let maxLen=0;
+        Object.entries(memo).forEach(([id,v]) => { if (v.len > maxLen) { maxLen = v.len; endTask = id; } });
+        const path = new Set<string>();
+        while (endTask) { path.add(endTask); endTask = memo[endTask].prev || undefined; }
+        setCriticalPath(path);
+    }, [showCriticalPath, tasks, dependencies]);
+
+    const addDependencyPersistent = async (fromId: string, toId: string) => {
+    if (fromId === toId) { showModalMsg('Dependency','Cannot link a task to itself','error'); return; }
+    if (dependencies.some(d => d.predecessor_id === fromId && d.successor_id === toId)) { showModalMsg('Dependency','Dependency already exists','info'); return; }
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data, error } = await (supabase as any).from('task_dependencies').insert({ predecessor_id: fromId, successor_id: toId, type: 'finish_to_start', lag: 0 }).select().single();
+            if (error) throw error;
+            setDependencies(prev => [...prev, data]);
+            showModalMsg('Dependency','Dependency added','success');
+        } catch (err:any) {
+            console.error('Add dependency error', err);
+            showModalMsg('Dependency error', err.message || 'Failed to add dependency','error');
+        }
+    };
+
+    const removeDependencyPersistent = async (fromId: string, toId: string) => {
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error } = await (supabase as any).from('task_dependencies').delete().eq('predecessor_id', fromId).eq('successor_id', toId);
+            if (error) throw error;
+            setDependencies(prev => prev.filter(d => !(d.predecessor_id === fromId && d.successor_id === toId)));
+            showModalMsg('Dependency','Dependency removed','success');
+        } catch (err:any) {
+            console.error('Remove dependency error', err);
+            showModalMsg('Dependency error', err.message || 'Failed to remove dependency','error');
+        }
+    };
+
+    // Mark functions as used to avoid lint removal before JSX usage later
+    void addDependencyPersistent;
+    void removeDependencyPersistent;
+
     // Generate date range for Gantt chart
     const dateRange = React.useMemo(() => {
-        const start = startOfWeek(startOfMonth(addDays(currentDate, -30)));
-        const end = endOfWeek(endOfMonth(addDays(currentDate, 60)));
-        return eachDayOfInterval({ start, end });
-    }, [currentDate]);
+        // Center window around currentDate month: start 7 days before month start, end 60 days after
+        const baseStart = startOfWeek(startOfMonth(addDays(currentDate, -7)));
+        const baseEnd = endOfWeek(endOfMonth(addDays(currentDate, 60)));
+        if (zoomLevel === 'day') return eachDayOfInterval({ start: baseStart, end: baseEnd });
+        if (zoomLevel === 'week') {
+            // collapse to week starts
+            const days = eachDayOfInterval({ start: baseStart, end: baseEnd });
+            return days.filter(d => d.getDay() === 1); // Mondays
+        }
+        // month level: first of month only
+        const days = eachDayOfInterval({ start: baseStart, end: baseEnd });
+        return days.filter(d => d.getDate() === 1);
+    }, [currentDate, zoomLevel]);
 
-    const dayWidth = React.useMemo(() => ([24, 32, 48][dayScaleIndex] || 32), [dayScaleIndex]);
-    const visibleDays = React.useMemo(() => dateRange.slice(0, 62), [dateRange]);
+    const dayWidth = React.useMemo(() => {
+        if (zoomLevel === 'day') return ([24, 32, 48][dayScaleIndex] || 32);
+        if (zoomLevel === 'week') return 80; // each week column wider
+        return 120; // month
+    }, [dayScaleIndex, zoomLevel]);
+    const visibleDays = React.useMemo(() => dateRange.slice(0, zoomLevel==='day'?62: (zoomLevel==='week'?26:14)), [dateRange, zoomLevel]);
 
     // Apply simple filter/sort for display without changing markup
     const tasksForRender = React.useMemo(() => {
@@ -243,20 +353,128 @@ export default function ProjectsView() {
     const getTaskPosition = (task: Task) => {
         const startDate = new Date(task.start_date);
         const endDate = new Date(task.end_date);
-        const startIndex = dateRange.findIndex(date =>
-            format(date, 'yyyy-MM-dd') === format(startDate, 'yyyy-MM-dd')
-        );
-        const duration = differenceInDays(endDate, startDate) + 1;
-
-        return {
-            left: Math.max(0, startIndex * dayWidth),
-            width: Math.max(dayWidth, duration * dayWidth),
-        };
+        if (zoomLevel === 'day') {
+            const startIndex = dateRange.findIndex(date => format(date, 'yyyy-MM-dd') === format(startDate, 'yyyy-MM-dd'));
+            const duration = differenceInDays(endDate, startDate) + 1;
+            return { left: Math.max(0, startIndex * dayWidth), width: Math.max(dayWidth, duration * dayWidth) };
+        }
+        if (zoomLevel === 'week') {
+            // compute week index (Monday-based)
+            const monday = (d: Date) => { const nd = new Date(d); const day = nd.getDay(); const diff = (day===0? -6 : 1) - day; nd.setDate(nd.getDate()+diff); return new Date(nd.getFullYear(), nd.getMonth(), nd.getDate()); };
+            const startWeek = monday(startDate);
+            const endWeek = monday(endDate);
+            const weeks = dateRange; // already Mondays
+            const startIndex = weeks.findIndex(d => format(d,'yyyy-MM-dd')===format(startWeek,'yyyy-MM-dd'));
+            const endIndex = weeks.findIndex(d => format(d,'yyyy-MM-dd')===format(endWeek,'yyyy-MM-dd'));
+            const span = (endIndex - startIndex)+1;
+            return { left: Math.max(0, startIndex*dayWidth), width: Math.max(dayWidth, span*dayWidth) };
+        }
+        // month zoom
+        const startMonthKey = format(startDate,'yyyy-MM');
+        const endMonthKey = format(endDate,'yyyy-MM');
+        const months = dateRange.map(d=>format(d,'yyyy-MM'));
+        const startIndex = months.findIndex(m=>m===startMonthKey);
+        const endIndex = months.findIndex(m=>m===endMonthKey);
+        const span = (endIndex - startIndex)+1;
+        return { left: Math.max(0, startIndex*dayWidth), width: Math.max(dayWidth, span*dayWidth) };
     };
 
     const openTaskModal = (taskId: string) => setDetailTaskId(taskId);
     const closeTaskModal = () => setDetailTaskId(null);
     const [resizing, setResizing] = useState<{ id: string; originX: number; start: Date; end: Date; edge: 'start'|'end' } | null>(null);
+    // Store ref to Gantt scroll container for edge auto-scroll and global handlers
+    const ganttBodyRef = useRef<HTMLDivElement|null>(null);
+
+    // Helper to snap any date to midnight (prevents drift)
+    const snapDate = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    // Global mouse handlers for robust drag / resize operations
+    useEffect(() => {
+        const onMove = (e: MouseEvent) => {
+            if (!dragging && !resizing) return;
+            // Determine dayWidth from closure (still valid)
+            if (dragging) {
+                const deltaDays = Math.round((e.clientX - dragging.originX) / dayWidth);
+                if (deltaDays !== 0) {
+                    if (multiSelect.length > 1) {
+                        if (!multiDragOriginals) {
+                            // capture originals lazily
+                            const originals: Record<string,{start:Date; end:Date}> = {};
+                            multiSelect.forEach(id => {
+                                const t = tasks.find(ts=>ts.id===id);
+                                if (t) originals[id] = { start: new Date(t.start_date), end: new Date(t.end_date) };
+                            });
+                            setMultiDragOriginals(originals);
+                        } else {
+                            setTasks(prev => prev.map(t => multiSelect.includes(t.id) ? {
+                                ...t,
+                                start_date: format(addDays(multiDragOriginals[t.id].start, deltaDays),'yyyy-MM-dd'),
+                                end_date: format(addDays(multiDragOriginals[t.id].end, deltaDays),'yyyy-MM-dd')
+                            } : t));
+                        }
+                    } else {
+                        setTasks(prev => prev.map(t => t.id === dragging.id ? {
+                            ...t,
+                            start_date: format(addDays(dragging.start, deltaDays), 'yyyy-MM-dd'),
+                            end_date: format(addDays(dragging.end, deltaDays), 'yyyy-MM-dd')
+                        } : t));
+                    }
+                }
+                // Edge auto-scroll
+                if (ganttBodyRef.current) {
+                    const rect = ganttBodyRef.current.getBoundingClientRect();
+                    const threshold = 60;
+                    if (e.clientX > rect.right - threshold) ganttBodyRef.current.scrollLeft += Math.max(2, dayWidth/4);
+                    else if (e.clientX < rect.left + threshold) ganttBodyRef.current.scrollLeft -= Math.max(2, dayWidth/4);
+                }
+            } else if (resizing) {
+                const deltaDays = Math.round((e.clientX - resizing.originX) / dayWidth);
+                if (deltaDays === 0) return;
+                if (resizing.edge === 'start') {
+                    const newStart = addDays(resizing.start, deltaDays);
+                    setTasks(prev => prev.map(t => t.id === resizing.id ? { ...t, start_date: format(newStart, 'yyyy-MM-dd') } : t));
+                } else {
+                    const newEnd = addDays(resizing.end, deltaDays);
+                    setTasks(prev => prev.map(t => t.id === resizing.id ? { ...t, end_date: format(newEnd, 'yyyy-MM-dd') } : t));
+                }
+            }
+        };
+        const onUp = (e: MouseEvent) => {
+            if (dragging) {
+                const deltaDays = Math.round((e.clientX - dragging.originX) / dayWidth);
+                if (deltaDays !== 0) {
+                    if (multiSelect.length > 1 && multiDragOriginals) {
+                        multiSelect.forEach(id => {
+                            const orig = multiDragOriginals[id];
+                            if (!orig) return;
+                            const start = snapDate(addDays(orig.start, deltaDays));
+                            const end = snapDate(addDays(orig.end, deltaDays));
+                            updateTaskDates(id, start, end);
+                        });
+                    } else {
+                        const start = snapDate(addDays(dragging.start, deltaDays));
+                        const end = snapDate(addDays(dragging.end, deltaDays));
+                        updateTaskDates(dragging.id, start, end);
+                    }
+                }
+                setDragging(null);
+                setMultiDragOriginals(null);
+            }
+            if (resizing) {
+                const deltaDays = Math.round((e.clientX - resizing.originX) / dayWidth);
+                const start = resizing.edge === 'start' ? snapDate(addDays(resizing.start, deltaDays)) : new Date(tasks.find(t=>t.id===resizing.id)?.start_date || resizing.start);
+                const end = resizing.edge === 'end' ? snapDate(addDays(resizing.end, deltaDays)) : new Date(tasks.find(t=>t.id===resizing.id)?.end_date || resizing.end);
+                updateTaskDates(resizing.id, start, end);
+                setResizing(null);
+            }
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        return () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+    }, [dragging, resizing, dayWidth, tasks, multiSelect, multiDragOriginals]);
 
     const getStatusIcon = (status: string, progress: number) => {
         if (status === 'completed' || progress === 100) {
@@ -276,9 +494,16 @@ export default function ProjectsView() {
         }
     };
 
+    const projectColorMap = React.useMemo(() => {
+        const palette = ['bg-blue-500','bg-indigo-500','bg-teal-500','bg-rose-500','bg-amber-500','bg-emerald-500','bg-fuchsia-500'];
+        const map: Record<string,string> = {};
+        projects.forEach((p,i)=>{ map[p.id] = palette[i % palette.length]; });
+        return map;
+    }, [projects]);
+
     const addTask = async () => {
         if (!newTaskName.trim()) {
-            toast.error('Please enter a task name');
+            showModalMsg('Validation','Please enter a task name','error');
             return;
         }
 
@@ -287,12 +512,12 @@ export default function ProjectsView() {
             : projects[0];
 
         if (!targetProject) {
-            toast.error('No project selected. Please create a project first.');
+            showModalMsg('Project','No project selected. Please create a project first.','error');
             return;
         }
 
         if (!user) {
-            toast.error('User not authenticated');
+            showModalMsg('Auth','User not authenticated','error');
             return;
         }
 
@@ -331,12 +556,12 @@ export default function ProjectsView() {
             // Add to local state
             setTasks(prev => [...prev, data]);
             setNewTaskName('');
-            toast.success(`Task "${newTaskName}" added to ${targetProject.name}`);
+            showModalMsg('Task Added',`Task "${newTaskName}" added to ${targetProject.name}`,'success');
             // Re-fetch to confirm persistence
             fetchData();
         } catch (error: any) {
             console.error('Add task error:', error);
-            toast.error(`Failed to add task: ${error.message || 'Unknown error'}`);
+            showModalMsg('Task Error', `Failed to add task: ${error.message || 'Unknown error'}`,'error');
         } finally {
             setAddingTask(false);
         }
@@ -367,28 +592,34 @@ export default function ProjectsView() {
                     : task
             ));
 
-            toast.success('Task dates updated successfully');
+            showModalMsg('Task Updated','Task dates updated successfully','success');
         } catch (error: any) {
             console.error('Update task dates error:', error);
-            toast.error(`Failed to update task dates: ${error.message || 'Unknown error'}`);
+            showModalMsg('Task Error', `Failed to update task dates: ${error.message || 'Unknown error'}`,'error');
         }
     };
 
     const deleteTask = async (taskId: string) => {
         try {
+            if (!currentWorkspace) throw new Error('No workspace');
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error } = await (supabase as any)
+            const { data, error, status } = await (supabase as any)
                 .from('tasks')
                 .delete()
-                .eq('id', taskId);
-
+                .eq('id', taskId)
+                .eq('workspace_id', currentWorkspace.id)
+                .select();
+            console.log('Delete task response', { status, dataCount: data?.length, data });
             if (error) throw error;
-
+            if (!data || data.length === 0) {
+                showModalMsg('Task Deletion','No matching row deleted (check RLS / workspace)','error');
+                return;
+            }
             setTasks(prev => prev.filter(task => task.id !== taskId));
-            toast.success('Task deleted successfully');
+            showModalMsg('Task Deleted','Task deleted successfully','success');
         } catch (error: any) {
             console.error('Delete task error:', error);
-            toast.error(`Failed to delete task: ${error.message || 'Unknown error'}`);
+            showModalMsg('Task Error', `Failed to delete task: ${error.message || 'Unknown error'}`,'error');
         }
     };
 
@@ -416,7 +647,7 @@ export default function ProjectsView() {
             ));
         } catch (error: any) {
             console.error('Update task progress error:', error);
-            toast.error(`Failed to update task progress: ${error.message || 'Unknown error'}`);
+            showModalMsg('Task Error', `Failed to update task progress: ${error.message || 'Unknown error'}`,'error');
         }
     };
     // Prevent unused-function compile errors until these are wired to UI interactions
@@ -432,7 +663,7 @@ export default function ProjectsView() {
 
     const createProject = async (projectName: string) => {
         if (!projectName.trim() || !user || !currentWorkspace) {
-            toast.error('Please provide a project name');
+            showModalMsg('Validation','Please provide a project name','error');
             return;
         }
 
@@ -460,19 +691,19 @@ export default function ProjectsView() {
 
             setProjects(prev => [data, ...prev]);
             setSelectedProject(data.id);
-            toast.success(`Project "${projectName}" created successfully`);
+            showModalMsg('Project Created',`Project "${projectName}" created successfully`,'success');
             // Re-fetch to confirm persistence
             fetchData();
             return data;
         } catch (error: any) {
             console.error('Create project error:', error);
-            toast.error(`Failed to create project: ${error.message || 'Unknown error'}`);
+            showModalMsg('Project Error', `Failed to create project: ${error.message || 'Unknown error'}`,'error');
         }
     };
 
     const inviteUser = async () => {
         if (!currentWorkspace || !user) {
-            toast.error('Select a workspace first');
+            showModalMsg('Workspace','Select a workspace first','error');
             return;
         }
         const email = window.prompt('Enter email to invite:');
@@ -484,10 +715,10 @@ export default function ProjectsView() {
             const { error } = await (supabase as any)
                 .rpc('create_workspace_invite', { p_workspace_id: currentWorkspace.id, p_email: email, p_role: role });
             if (error) throw error;
-            toast.success('Invitation sent');
+            showModalMsg('Invite','Invitation sent','success');
         } catch (err: any) {
             console.error('Invite error:', err);
-            toast.error(err.message || 'Failed to send invite');
+            showModalMsg('Invite Error', err.message || 'Failed to send invite','error');
         }
     };
 
@@ -546,9 +777,9 @@ export default function ProjectsView() {
                                 if (searchTerm) {
                                     const found = tasks.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
                                     if (found.length === 0) {
-                                        toast.error('No tasks found');
+                                        showModalMsg('Search','No tasks found','error');
                                     } else {
-                                        toast.success(`Found ${found.length} task(s)`);
+                                        showModalMsg('Search',`Found ${found.length} task(s)`,'info');
                                         // Could implement highlighting or filtering here
                                     }
                                 }
@@ -627,9 +858,19 @@ export default function ProjectsView() {
                             <Filter className="w-4 h-4" />
                             {showOnlyMine ? 'My tasks' : 'Filter'}
                         </button>
-                        <div className="flex items-center gap-2 cursor-pointer" onClick={() => setDayScaleIndex((p) => (p + 1) % 3)}>
-                            <span className="text-sm text-gray-500">Days</span>
-                            <div className="w-16 h-1 bg-gray-200 rounded"></div>
+                        <button onClick={()=>setShowCriticalPath(p=>!p)} className={`flex items-center gap-2 text-sm ${showCriticalPath?'text-red-600':'text-gray-600 hover:text-gray-900'}`}>Critical Path</button>
+                        <div className="flex items-center gap-2">
+                            <select value={zoomLevel} onChange={(e)=>setZoomLevel(e.target.value as any)} className="text-sm border border-gray-300 rounded px-2 py-1">
+                                <option value="day">Day</option>
+                                <option value="week">Week</option>
+                                <option value="month">Month</option>
+                            </select>
+                            {zoomLevel==='day' && (
+                                <div className="flex items-center gap-2 cursor-pointer" onClick={() => setDayScaleIndex((p) => (p + 1) % 3)}>
+                                    <span className="text-sm text-gray-500">Scale</span>
+                                    <div className="w-16 h-1 bg-gray-200 rounded"></div>
+                                </div>
+                            )}
                         </div>
                         <button
                             onClick={() => {
@@ -656,7 +897,7 @@ export default function ProjectsView() {
                                     URL.revokeObjectURL(url);
                                 } catch (e) {
                                     console.error(e);
-                                    toast.error('Failed to export');
+                                    showModalMsg('Export','Failed to export','error');
                                 }
                             }}
                             className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
@@ -666,7 +907,7 @@ export default function ProjectsView() {
                         </button>
                         <div className="flex items-center gap-2">
                             <span className="text-sm text-gray-500">View</span>
-                            <button onClick={() => toast('Use the tabs above to switch views')} className="p-1 text-gray-400 hover:text-gray-600">
+                            <button onClick={() => showModalMsg('Views','Use the tabs above to switch views','info')} className="p-1 text-gray-400 hover:text-gray-600">
                                 <ChevronDown className="w-4 h-4" />
                             </button>
                         </div>
@@ -798,22 +1039,7 @@ export default function ProjectsView() {
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    const options = ['Edit task', 'Duplicate', 'Delete', 'Add subtask'];
-                                                                    const choice = window.prompt(`Options for "${task.name}":\n${options.map((o,i) => `${i+1}. ${o}`).join('\n')}\n\nEnter choice (1-4):`);
-                                                                    if (choice === '1') openTaskModal(task.id);
-                                                                    else if (choice === '3') {
-                                                                        if (window.confirm(`Delete "${task.name}"?`)) {
-                                                                            deleteTask(task.id);
-                                                                        }
-                                                                    }
-                                                                    else if (choice === '2') {
-                                                                        const newName = window.prompt('New task name:', task.name + ' (copy)');
-                                                                        if (newName) {
-                                                                            // Duplicate task logic - simplified
-                                                                            setNewTaskName(newName);
-                                                                            addTask();
-                                                                        }
-                                                                    }
+                                                                    setTaskOptions({open:true, task});
                                                                 }}
                                                                 className="text-gray-400 hover:text-gray-600 transition-colors"
                                                             >
@@ -873,9 +1099,10 @@ export default function ProjectsView() {
                                             if (!milestoneName) return;
                                             const targetProject = selectedProject ? projects.find(p => p.id === selectedProject) : projects[0];
                                             if (!targetProject || !user) return;
-                                            
                                             try {
                                                 const client = supabaseAdmin || supabase;
+                                                // Primary attempt direct insert
+                                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                                 const { data, error } = await (client as any)
                                                     .from('tasks')
                                                     .insert({
@@ -891,15 +1118,43 @@ export default function ProjectsView() {
                                                         priority: 'high',
                                                         assigned_to: null,
                                                         created_by: user.id,
+                                                        is_milestone: true,
                                                     })
                                                     .select()
                                                     .single();
                                                 if (error) throw error;
                                                 setTasks(prev => [...prev, data]);
-                                                toast.success(`Milestone "${milestoneName}" added`);
-                                            } catch (error: any) {
-                                                console.error('Add milestone error:', error);
-                                                toast.error(`Failed to add milestone: ${error.message}`);
+                                                showModalMsg('Milestone',`Milestone "${milestoneName}" added`,'success');
+                                            } catch (primaryErr:any) {
+                                                console.warn('Primary milestone insert failed, trying secure RPC', primaryErr);
+                                                try {
+                                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                    const { data: secureId, error: rpcError } = await (supabase as any)
+                                                        .rpc('create_task_secure', {
+                                                            p_workspace_id: currentWorkspace!.id,
+                                                            p_project_id: targetProject.id,
+                                                            p_name: milestoneName.trim(),
+                                                            p_start: format(new Date(), 'yyyy-MM-dd'),
+                                                            p_end: format(new Date(), 'yyyy-MM-dd'),
+                                                            p_duration: 0,
+                                                            p_is_milestone: true
+                                                        });
+                                                    if (rpcError) throw rpcError;
+                                                    if (secureId) {
+                                                        // refetch that row
+                                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                                        const { data: row, error: rowErr } = await (supabase as any)
+                                                            .from('tasks')
+                                                            .select('*')
+                                                            .eq('id', secureId)
+                                                            .single();
+                                                        if (!rowErr && row) setTasks(prev => [...prev, row]);
+                                                        showModalMsg('Milestone',`Milestone "${milestoneName}" added (secure)`,'success');
+                                                    }
+                                                } catch (rpcErr:any) {
+                                                    console.error('Secure milestone creation failed', rpcErr);
+                                                    showModalMsg('Milestone Error', rpcErr.message || 'Failed to add milestone','error');
+                                                }
                                             }
                                         }}
                                         className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors text-sm"
@@ -914,19 +1169,19 @@ export default function ProjectsView() {
                 </div>
 
                 {/* Gantt Chart Panel */}
-                <div className="flex-1 overflow-auto bg-gray-50">
+                <div className="flex-1 overflow-auto bg-gray-50" ref={ganttBodyRef}>
                     {/* Timeline Header */}
                     <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
                         {/* Month Headers */}
                         <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 text-sm font-medium text-gray-700">
                             <div className="flex items-center gap-2">
                                 <button
-                                    onClick={() => setCurrentDate(addDays(currentDate, -30))}
+                                    onClick={() => setCurrentDate(addDays(currentDate, -31))}
                                     className="p-1 hover:bg-gray-100 rounded"
                                 >
                                     <ChevronLeft className="w-4 h-4" />
                                 </button>
-                                <span>{format(addDays(currentDate, -30), 'MMMM yyyy')}</span>
+                                <span>{format(currentDate, 'MMMM yyyy')}</span>
                                 <button
                                     onClick={() => setCurrentDate(addDays(currentDate, 30))}
                                     className="p-1 hover:bg-gray-100 rounded"
@@ -964,7 +1219,7 @@ export default function ProjectsView() {
                     </div>
 
                     {/* Gantt Chart Body */}
-                    <div className="relative">
+                    <div className="relative" style={{ minWidth: visibleDays.length * dayWidth, width: visibleDays.length * dayWidth }}>
                         {/* Grid overlay */}
                         <div className="absolute inset-0 z-0 pointer-events-none">
                             <div className="flex h-full" style={{ width: visibleDays.length * dayWidth }}>
@@ -1031,22 +1286,44 @@ export default function ProjectsView() {
                                                     <div key={task.id} className="relative h-10 flex items-center">
                                                         {/* main bar */}
                                                         <div
-                                                            className={`absolute h-6 rounded-sm transition-all duration-150 cursor-pointer flex items-center px-2 ${
+                                                            className={`absolute h-6 rounded-sm transition-all duration-150 cursor-pointer flex items-center px-2 shadow-sm ring-1 ring-black/5 ${
                                                                 dragging?.id === task.id ? 'opacity-80 scale-105 shadow-lg z-30' : 
                                                                 resizing?.id === task.id ? 'opacity-80 z-30' : 'opacity-90 hover:opacity-100'
-                                                            } ${getStatusColor(task.status)}`}
+                                                            } ${(task.status==='completed') ? getStatusColor(task.status) : projectColorMap[task.project_id] || getStatusColor(task.status)}`}
                                                             style={{ left: position.left, width: position.width }}
                                                             title={`${task.name} (${format(new Date(task.start_date), 'MM/dd/yyyy')} - ${format(new Date(task.end_date), 'MM/dd/yyyy')})`}
                                                             onMouseDown={onMouseDown}
                                                             onMouseUp={onMouseUp}
-                                                            onClick={onClick}
+                                                            onClick={(e) => {
+                                                                if (creatingDependency && creatingDependency.fromTaskId !== task.id) {
+                                                                    addDependencyPersistent(creatingDependency.fromTaskId, task.id);
+                                                                    setCreatingDependency(null);
+                                                                    return;
+                                                                }
+                                                                if (e.shiftKey) {
+                                                                    setMultiSelect(prev => prev.includes(task.id) ? prev.filter(id=>id!==task.id) : [...prev, task.id]);
+                                                                    return;
+                                                                }
+                                                                setMultiSelect([task.id]);
+                                                                onClick(e);
+                                                            }}
                                                             onMouseMove={(e) => {
                                                                 if (!dragging || dragging.id !== task.id) return;
                                                                 const deltaDays = Math.round((e.clientX - dragging.originX) / dayWidth);
                                                                 if (deltaDays === 0) return;
-                                                                const newStart = addDays(dragging.start, deltaDays);
-                                                                const newEnd = addDays(dragging.end, deltaDays);
-                                                                setTasks(prev => prev.map(t => t.id === task.id ? { ...t, start_date: format(newStart, 'yyyy-MM-dd'), end_date: format(newEnd, 'yyyy-MM-dd') } : t));
+                                                                if (multiDragOriginals) {
+                                                                    setTasks(prev => prev.map(t => multiSelect.includes(t.id) ? { ...t, start_date: format(addDays(multiDragOriginals[t.id].start, deltaDays),'yyyy-MM-dd'), end_date: format(addDays(multiDragOriginals[t.id].end, deltaDays),'yyyy-MM-dd') } : t));
+                                                                } else {
+                                                                    const newStart = addDays(dragging.start, deltaDays);
+                                                                    const newEnd = addDays(dragging.end, deltaDays);
+                                                                    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, start_date: format(newStart, 'yyyy-MM-dd'), end_date: format(newEnd, 'yyyy-MM-dd') } : t));
+                                                                }
+                                                                if (ganttScrollRef.current) {
+                                                                    const rect = ganttScrollRef.current.getBoundingClientRect();
+                                                                    const threshold = 60;
+                                                                    if (e.clientX > rect.right - threshold) ganttScrollRef.current.scrollLeft += Math.max(2, dayWidth/4);
+                                                                    else if (e.clientX < rect.left + threshold) ganttScrollRef.current.scrollLeft -= Math.max(2, dayWidth/4);
+                                                                }
                                                             }}
                                                             onMouseLeave={() => { 
                                                                 if (dragging && dragging.id === task.id) {
@@ -1060,11 +1337,21 @@ export default function ProjectsView() {
                                                                 if (dragging && dragging.id === task.id) {
                                                                     const deltaDays = Math.round((e.clientX - dragging.originX) / dayWidth);
                                                                     if (deltaDays !== 0) {
-                                                                        const start = addDays(dragging.start, deltaDays);
-                                                                        const end = addDays(dragging.end, deltaDays);
-                                                                        updateTaskDates(task.id, start, end);
+                                                                        if (multiDragOriginals) {
+                                                                            multiSelect.forEach(id => {
+                                                                                const orig = multiDragOriginals[id];
+                                                                                const start = addDays(orig.start, deltaDays);
+                                                                                const end = addDays(orig.end, deltaDays);
+                                                                                updateTaskDates(id, start, end);
+                                                                            });
+                                                                        } else {
+                                                                            const start = addDays(dragging.start, deltaDays);
+                                                                            const end = addDays(dragging.end, deltaDays);
+                                                                            updateTaskDates(task.id, start, end);
+                                                                        }
                                                                     }
                                                                     setDragging(null);
+                                                                    setMultiDragOriginals(null);
                                                                 }
                                                             }}
                                                         >
@@ -1077,9 +1364,16 @@ export default function ProjectsView() {
                                                                 }}
                                                             />
                                                             {/* label */}
-                                                            <span className="text-white text-xs font-medium truncate">
+                                                            <span className={`text-white text-xs font-medium truncate ${multiSelect.includes(task.id)?'underline':''}`}>
                                                                 {task.name}
                                                             </span>
+                                                            <button
+                                                                onClick={(e)=>{ e.stopPropagation(); setCreatingDependency({ fromTaskId: task.id }); showModalMsg('Dependency','Select a successor task','info'); }}
+                                                                className="absolute -right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/40 hover:bg-white/70 text-[10px] flex items-center justify-center"
+                                                                title="Create dependency"
+                                                            >
+                                                                +
+                                                            </button>
                                                             {/* right resize handle */}
                                                             <div
                                                                 className="absolute right-0 top-0 bottom-0 w-1.5 bg-black/20 cursor-e-resize"
@@ -1092,9 +1386,11 @@ export default function ProjectsView() {
 
                                                         {/* Progress overlay */}
                                                         <div
-                                                            className="absolute top-2 h-6 bg-white bg-opacity-30 rounded-sm"
-                                                            style={{ left: position.left, width: position.width * (task.progress / 100) }}
-                                                        ></div>
+                                                            className="absolute top-2 h-6 rounded-sm overflow-hidden pointer-events-none"
+                                                            style={{ left: position.left, width: position.width }}
+                                                        >
+                                                            <div className="h-full bg-white/30" style={{ width: `${task.progress}%` }} />
+                                                        </div>
 
                                                         {/* Resize logic mouse move capture */}
                                                         <div
@@ -1134,6 +1430,46 @@ export default function ProjectsView() {
                             </div>
                         )}
 
+                        {/* Dependency lines */}
+                        <svg className="absolute inset-0 z-0 pointer-events-none" style={{ width: visibleDays.length * dayWidth, height: '100%' }}>
+                            <defs>
+                                <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                                    <path d="M0,0 L6,3 L0,6 Z" fill="#64748b" />
+                                </marker>
+                                <marker id="arrow-red" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
+                                    <path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" />
+                                </marker>
+                            </defs>
+                            {dependencies.map((d,i) => {
+                                const pred = tasks.find(t=>t.id===d.predecessor_id);
+                                const succ = tasks.find(t=>t.id===d.successor_id);
+                                if (!pred || !succ) return null;
+                                const pPos = getTaskPosition(pred);
+                                const sPos = getTaskPosition(succ);
+                                // Simple vertical mapping: index in filtered tasks list
+                                const ordered = tasksForRender.map(t=>t.id);
+                                const pIndex = ordered.indexOf(pred.id);
+                                const sIndex = ordered.indexOf(succ.id);
+                                const rowHeight = 40; const topPad = 0;
+                                const y1 = topPad + (pIndex+1)*rowHeight + 10;
+                                const y2 = topPad + (sIndex+1)*rowHeight + 10;
+                                const x1 = pPos.left + pPos.width;
+                                const x2 = sPos.left;
+                                const midX = x1 + (x2 - x1)/2;
+                                const isCP = showCriticalPath && criticalPath.has(pred.id) && criticalPath.has(succ.id);
+                                return (
+                                    <path key={i}
+                                        d={`M${x1},${y1} C${midX},${y1} ${midX},${y2} ${x2},${y2}`}
+                                        fill="none"
+                                        stroke={isCP? '#dc2626':'#64748b'}
+                                        strokeWidth={isCP?3:2}
+                                        markerEnd={`url(#${isCP?'arrow-red':'arrow'})`}
+                                        className="cursor-pointer"
+                                        onClick={(e)=>{ if (e.shiftKey) removeDependencyPersistent(d.predecessor_id, d.successor_id); }}
+                                    />
+                                );
+                            })}
+                        </svg>
                         {/* Today indicator */}
                         <div
                             className="absolute top-0 bottom-0 w-px bg-red-500 z-20 pointer-events-none"
@@ -1194,14 +1530,14 @@ export default function ProjectsView() {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-6">
                         <button 
-                            onClick={() => toast('Attachments feature: Upload files and link them to tasks')}
+                            onClick={() => showModalMsg('Attachments','Upload files and link them to tasks (coming soon)','info')}
                             className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                         >
                             <Calendar className="w-4 h-4" />
                             Attachments
                         </button>
                         <button 
-                            onClick={() => toast('Time tracker: Track time spent on tasks. Coming in next update!')}
+                            onClick={() => showModalMsg('Time Tracker','Track time spent on tasks (planned feature)','info')}
                             className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
                         >
                             <Users className="w-4 h-4" />
@@ -1214,7 +1550,7 @@ export default function ProjectsView() {
                         <button 
                             onClick={() => {
                                 const apps = ['Calendar sync', 'Slack integration', 'Email notifications', 'Export tools'];
-                                toast(`Available integrations:\n${apps.join('\n')}`);
+                                showModalMsg('Integrations',`Available integrations:\n${apps.join('\n')}`,'info');
                             }}
                             className="text-gray-400 hover:text-gray-600 transition-colors"
                         >
@@ -1247,7 +1583,7 @@ export default function ProjectsView() {
                                 {projects.map(p => (
                                     <li key={p.id}>
                                         <button
-                                            onClick={() => { setSelectedProject(p.id); setShowProjectPicker(false); toast.success(`Switched to ${p.name}`); }}
+                                            onClick={() => { setSelectedProject(p.id); setShowProjectPicker(false); showModalMsg('Project', `Switched to ${p.name}`,'info'); }}
                                             className="w-full text-left px-3 py-3 hover:bg-gray-50 flex items-center gap-3"
                                         >
                                             <span className="flex-1 font-medium text-gray-900 truncate">{p.name}</span>
@@ -1281,6 +1617,34 @@ export default function ProjectsView() {
                 task={detailTaskId ? (tasks.find(t => t.id === detailTaskId) as any) : null}
                 onClose={closeTaskModal}
             />
+            {taskOptions.open && taskOptions.task && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-5 relative">
+                        <button onClick={()=>setTaskOptions({open:false, task:null})} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">×</button>
+                        <h4 className="text-sm font-semibold mb-3 text-gray-800">Task Options</h4>
+                        <div className="space-y-2">
+                            <button onClick={()=>{ openTaskModal(taskOptions.task!.id); setTaskOptions({open:false,task:null}); }} className="w-full text-left text-xs px-3 py-2 rounded hover:bg-gray-100">Edit task</button>
+                            <button onClick={()=>{ setNewTaskName(taskOptions.task!.name + ' (copy)'); addTask(); setTaskOptions({open:false,task:null}); }} className="w-full text-left text-xs px-3 py-2 rounded hover:bg-gray-100">Duplicate</button>
+                            <button onClick={()=>{ deleteTask(taskOptions.task!.id); setTaskOptions({open:false,task:null}); }} className="w-full text-left text-xs px-3 py-2 rounded hover:bg-gray-100 text-red-600">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {feedback.open && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-5 relative">
+                        <button onClick={closeModalMsg} className="absolute top-2 right-2 text-gray-400 hover:text-gray-600">×</button>
+                        <h4 className={`text-sm font-semibold mb-2 ${feedback.type==='error'?'text-red-600':feedback.type==='success'?'text-green-600':'text-gray-800'}`}>{feedback.title}</h4>
+                        <pre className="whitespace-pre-wrap text-xs text-gray-700 mb-4">{feedback.message}</pre>
+                        <div className="flex justify-end">
+                            <button onClick={closeModalMsg} className="px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+
+// Feedback Modal component inline (could be extracted later)
+// Insert right before export if needed (already exported above)

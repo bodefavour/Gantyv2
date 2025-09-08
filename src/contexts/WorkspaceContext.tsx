@@ -9,6 +9,9 @@ interface Workspace {
     description: string | null;
     owner_id: string;
     role: 'owner' | 'admin' | 'member' | 'viewer';
+    plan_tier?: string;
+    trial_ends_at?: string | null;
+    subscription_status?: string | null;
 }
 
 interface WorkspaceContextType {
@@ -44,7 +47,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data: owned, error: ownedErr } = await (client as any)
                 .from('workspaces')
-                .select('id,name,description,owner_id')
+                .select('id,name,description,owner_id,plan_tier,trial_ends_at,subscription_status')
                 .eq('owner_id', user.id);
             if (ownedErr) {
                 console.error('Workspace fetch error details (owned):', ownedErr);
@@ -55,7 +58,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
                 name: w.name,
                 description: w.description,
                 owner_id: w.owner_id,
-                role: 'owner' as const
+                role: 'owner' as const,
+                plan_tier: w.plan_tier,
+                trial_ends_at: w.trial_ends_at,
+                subscription_status: w.subscription_status
             }));
 
             // 2) Member workspaces (use admin to avoid RLS/policy recursion)
@@ -68,7 +74,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
                         id,
                         name,
                         description,
-                        owner_id
+                        owner_id,
+                        plan_tier,
+                        trial_ends_at,
+                        subscription_status
                     )
                 `)
                 .eq('user_id', user.id);
@@ -82,7 +91,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
                 name: m.workspaces.name,
                 description: m.workspaces.description,
                 owner_id: m.workspaces.owner_id,
-                role: m.role
+                role: m.role,
+                plan_tier: m.workspaces.plan_tier,
+                trial_ends_at: m.workspaces.trial_ends_at,
+                subscription_status: m.workspaces.subscription_status
             }));
 
             // Merge unique by id preferring owner role if duplicate
@@ -98,12 +110,8 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
             setWorkspaces(userWorkspaces);
 
-            // Try to restore last selected workspace from localStorage
-            const lastSelectedId = typeof window !== 'undefined' ? localStorage.getItem('lastSelectedWorkspaceId') : null;
-
             if (userWorkspaces.length > 0 && !currentWorkspace) {
-                const restored = lastSelectedId && userWorkspaces.find(w => w.id === lastSelectedId);
-                setCurrentWorkspace(restored || userWorkspaces[0]);
+                setCurrentWorkspace(userWorkspaces[0]);
             } else if (userWorkspaces.length === 0) {
                 await createDefaultWorkspace();
             }
@@ -137,12 +145,15 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
             console.log('Default workspace created:', workspace);
 
-            const newWorkspace = {
+            const newWorkspace: Workspace = {
                 id: workspace.id,
                 name: workspace.name,
                 description: workspace.description,
                 owner_id: workspace.owner_id as string,
-                role: 'owner' as const
+                role: 'owner' as const,
+                plan_tier: workspace.plan_tier,
+                trial_ends_at: workspace.trial_ends_at,
+                subscription_status: workspace.subscription_status
             };
 
             setWorkspaces([newWorkspace]);
@@ -158,28 +169,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         fetchWorkspaces();
     }, [fetchWorkspaces]);
 
-    // Persist current workspace selection
-    useEffect(() => {
-        if (currentWorkspace && typeof window !== 'undefined') {
-            try {
-                localStorage.setItem('lastSelectedWorkspaceId', currentWorkspace.id);
-            } catch {}
-        }
-    }, [currentWorkspace]);
-
     return (
         <WorkspaceContext.Provider
             value={{
                 workspaces,
                 currentWorkspace,
-                setCurrentWorkspace: (ws: Workspace) => {
-                    setCurrentWorkspace(ws);
-                    try {
-                        if (typeof window !== 'undefined') {
-                            localStorage.setItem('lastSelectedWorkspaceId', ws.id);
-                        }
-                    } catch {}
-                },
+                setCurrentWorkspace,
                 loading,
                 refetchWorkspaces: fetchWorkspaces
             }}
