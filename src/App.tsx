@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { Toaster } from 'react-hot-toast';
 import LandingPage from './components/landing/LandingPage';
+import MarketingPage from './components/landing/MarketingPage';
 import SignupPage from './auth/SignupPage';
 import LoginPage from './auth/LoginPage';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
@@ -38,6 +39,12 @@ function App() {
           <div className="min-h-screen bg-gray-50">
             <Routes>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/product" element={<MarketingPage title="Product" description="Explore Ganty features for planning, scheduling, and collaboration." />} />
+              <Route path="/plans" element={<MarketingPage title="Plans" description="Choose a plan that fits your team, from solo to enterprise." />} />
+              <Route path="/pricing" element={<MarketingPage title="Pricing" description="Simple, transparent pricing. Start free and scale as you grow." />} />
+              <Route path="/demo" element={<MarketingPage title="Live Demo" description="Book a live demo with our product experts and see Ganty in action." />} />
+              <Route path="/templates" element={<MarketingPage title="Templates" description="Kickstart projects with free, ready-to-use Gantt chart templates." />} />
+              <Route path="/faq" element={<MarketingPage title="FAQ" description="Answers to common questions about Ganty and Gantt charts." />} />
               <Route path="/auth" element={<SignupPage />} />
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/login" element={<LoginPage />} />

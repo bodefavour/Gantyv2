@@ -38,12 +38,31 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         try {
             setLoading(true);
             
-            // First, check if workspace_members table exists and user has any memberships
+            const client = supabaseAdmin || supabase;
+
+            // 1) Owned workspaces
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data, error } = await (supabase as any)
+            const { data: owned, error: ownedErr } = await (client as any)
+                .from('workspaces')
+                .select('id,name,description,owner_id')
+                .eq('owner_id', user.id);
+            if (ownedErr) {
+                console.error('Workspace fetch error details (owned):', ownedErr);
+            }
+
+            const ownedMapped = (owned || []).map((w: any) => ({
+                id: w.id,
+                name: w.name,
+                description: w.description,
+                owner_id: w.owner_id,
+                role: 'owner' as const
+            }));
+
+            // 2) Member workspaces (use admin to avoid RLS/policy recursion)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data: memberships, error: memErr } = await (client as any)
                 .from('workspace_members')
                 .select(`
-                    workspace_id,
                     role,
                     workspaces!inner (
                         id,
@@ -53,34 +72,35 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
                     )
                 `)
                 .eq('user_id', user.id);
-
-            if (error) {
-                console.error('Workspace fetch error details:', error);
-                
-                // If the user has no workspace memberships, create a default workspace
-                if (error.code === 'PGRST116' || error.message.includes('No rows found')) {
-                    await createDefaultWorkspace();
-                    return;
-                }
-                
-                throw error;
+            if (memErr) {
+                console.error('Workspace fetch error details (memberships):', memErr);
             }
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const userWorkspaces = (data || []).map((item: any) => ({
-                id: item.workspaces.id,
-                name: item.workspaces.name,
-                description: item.workspaces.description,
-                owner_id: item.workspaces.owner_id,
-                role: item.role
+            const memberMapped = (memberships || []).map((m: any) => ({
+                id: m.workspaces.id,
+                name: m.workspaces.name,
+                description: m.workspaces.description,
+                owner_id: m.workspaces.owner_id,
+                role: m.role
             }));
+
+            // Merge unique by id preferring owner role if duplicate
+            const mergedMap = new Map<string, Workspace>();
+            for (const w of [...ownedMapped, ...memberMapped]) {
+                if (!mergedMap.has(w.id)) mergedMap.set(w.id, w);
+                else {
+                    const existing = mergedMap.get(w.id)!;
+                    mergedMap.set(w.id, existing.role === 'owner' ? existing : w);
+                }
+            }
+            const userWorkspaces = Array.from(mergedMap.values());
 
             setWorkspaces(userWorkspaces);
 
             if (userWorkspaces.length > 0 && !currentWorkspace) {
                 setCurrentWorkspace(userWorkspaces[0]);
             } else if (userWorkspaces.length === 0) {
-                // If no workspaces found, create a default one
                 await createDefaultWorkspace();
             }
         } catch (error: any) {
@@ -98,21 +118,13 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
         try {
             console.log('Creating default workspace for user:', user.id);
-            
-            // Use admin client if available to bypass RLS issues, otherwise fall back to regular client
-            const client = supabaseAdmin || supabase;
-            
-            // Create a default workspace for the user
+            // Create a default workspace via RPC to also create membership atomically
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: workspace, error: workspaceError } = await (client as any)
-                .from('workspaces')
-                .insert({
-                    name: `${user.user_metadata?.first_name || 'My'} Workspace`,
-                    description: 'Default workspace',
-                    owner_id: user.id,
-                })
-                .select()
-                .single();
+            const { data: workspace, error: workspaceError } = await (supabase as any)
+                .rpc('create_workspace_with_membership', {
+                    p_name: `${user.user_metadata?.first_name || 'My'} Workspace`,
+                    p_description: 'Default workspace'
+                });
 
             if (workspaceError) {
                 console.error('Error creating workspace:', workspaceError);
@@ -121,14 +133,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
             console.log('Default workspace created:', workspace);
 
-            // Skip workspace_members insertion for now to avoid RLS issues
-            // The owner relationship is established by owner_id in workspaces table
-
             const newWorkspace = {
                 id: workspace.id,
                 name: workspace.name,
                 description: workspace.description,
-                owner_id: workspace.owner_id,
+                owner_id: workspace.owner_id as string,
                 role: 'owner' as const
             };
 

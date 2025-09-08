@@ -24,12 +24,12 @@ export default function SignupPage() {
         if (!user) return;
 
         try {
-            // Check if user has completed onboarding by looking for owned workspaces
+            // Check if user has completed onboarding
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data: workspaces } = await (supabase as any)
-                .from('workspaces')
-                .select('id')
-                .eq('owner_id', user.id);
+                .from('workspace_members')
+                .select('workspace_id')
+                .eq('user_id', user.id);
 
             // If user has workspaces, they've completed onboarding
             if (workspaces && workspaces.length > 0) {
@@ -107,13 +107,13 @@ export default function SignupPage() {
                     } catch (profileError) {
                         console.error('Profile update error:', profileError);
                     }
-                    
+
                     toast.success('Account created successfully!');
                 } else {
                     // User needs email confirmation but we'll let them continue to onboarding
                     toast.success('Account created! You can complete the setup and confirm your email later.');
                 }
-                
+
                 // Navigate to onboarding in both cases
                 navigate('/onboarding?new=true&source=email');
             } else {

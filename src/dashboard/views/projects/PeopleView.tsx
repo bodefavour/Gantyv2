@@ -1,4 +1,3 @@
-import React from 'react';
 import { Search, UserPlus, ChevronDown } from 'lucide-react';
 
 interface WorkspaceMember {
@@ -6,8 +5,8 @@ interface WorkspaceMember {
     user_id: string;
     role: string;
     profiles: {
-        first_name: string;
-        last_name: string;
+    first_name: string | null;
+    last_name: string | null;
         email: string;
     };
 }
@@ -83,20 +82,20 @@ export default function PeopleView({ members, onInviteUser }: PeopleViewProps) {
                             {/* User Info */}
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold text-sm">
-                                    FB
+                                    {(member.profiles.first_name?.charAt(0) || member.profiles.email.charAt(0)).toUpperCase()}
                                 </div>
                                 <div>
                                     <div className="font-medium text-gray-900">
-                                        Favour Bode
+                                        {member.profiles.first_name || ''} {member.profiles.last_name || ''}
                                     </div>
-                                    <div className="text-sm text-gray-500">hopewellbode@gmail.com</div>
+                                    <div className="text-sm text-gray-500">{member.profiles.email}</div>
                                 </div>
                             </div>
 
                             {/* Project Rights */}
                             <div className="flex items-center">
-                                <span className="font-medium text-gray-900">
-                                    Project Owner
+                                <span className="font-medium text-gray-900 capitalize">
+                                    {member.role.replace('_', ' ')}
                                 </span>
                             </div>
 

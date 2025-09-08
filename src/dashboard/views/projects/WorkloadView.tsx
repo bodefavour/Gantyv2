@@ -1,4 +1,4 @@
-import React from 'react';
+// no default React import needed
 import { ChevronDown, Filter, Download, MoreHorizontal, User } from 'lucide-react';
 import { format, addDays } from 'date-fns';
 
@@ -7,8 +7,8 @@ interface WorkspaceMember {
     user_id: string;
     role: string;
     profiles: {
-        first_name: string;
-        last_name: string;
+    first_name: string | null;
+    last_name: string | null;
         email: string;
     };
 }
@@ -103,7 +103,7 @@ export default function WorkloadView({ members }: WorkloadViewProps) {
                                     <ChevronDown className="w-4 h-4" />
                                 </button>
                                 <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                                    {member.profiles.first_name.charAt(0)}
+                                    {(member.profiles.first_name?.charAt(0) || member.profiles.email.charAt(0)).toUpperCase()}
                                 </div>
                                 <span className="text-sm font-medium text-gray-900">
                                     Favour Bode

@@ -8,6 +8,7 @@ export default function PortfoliosView() {
     const { currentWorkspace } = useWorkspace();
     const [projects, setProjects] = useState<Array<{ id: string; name: string; status: string; start_date: string | null; end_date: string | null }>>([]);
     const [loading, setLoading] = useState(true);
+    const [creating, setCreating] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -53,8 +54,43 @@ export default function PortfoliosView() {
                 <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
                     Manage plans, resources, and budgets and analyze risks across multiple projects.
                 </p>
-                <button className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors">
-                    Create
+                <button
+                    disabled={creating}
+                    onClick={async () => {
+                        if (!currentWorkspace) return;
+                        const name = window.prompt('Portfolio name?');
+                        if (!name) return;
+                        setCreating(true);
+                        const client = supabaseAdmin || supabase;
+                        try {
+                            // Create portfolio
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            const { data: p, error: e1 } = await (client as any)
+                                .from('portfolios')
+                                .insert({ workspace_id: currentWorkspace.id, name })
+                                .select()
+                                .single();
+                            if (e1) throw e1;
+
+                            // Ask to link visible projects
+                            if (projects.length > 0 && window.confirm('Link all current projects to this portfolio?')) {
+                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                const { error: e2 } = await (client as any)
+                                    .from('portfolio_projects')
+                                    .insert(projects.map(pr => ({ portfolio_id: p.id, project_id: pr.id })));
+                                if (e2) throw e2;
+                            }
+                            alert('Portfolio created');
+                        } catch (err) {
+                            console.error(err);
+                            alert('Failed to create portfolio');
+                        } finally {
+                            setCreating(false);
+                        }
+                    }}
+                    className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                    {creating ? 'Creating…' : 'Create'}
                 </button>
             </div>
 

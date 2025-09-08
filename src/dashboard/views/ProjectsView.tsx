@@ -79,6 +79,7 @@ export default function ProjectsView() {
     const { user } = useAuth();
     const [projects, setProjects] = useState<Project[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
+    const [members, setMembers] = useState<Array<{ id: string; user_id: string; role: string; profiles: { first_name: string | null; last_name: string | null; email: string } }>>([]);
     const [loading, setLoading] = useState(true);
     const [activeView, setActiveView] = useState<string>(() => {
         const saved = typeof window !== 'undefined' ? localStorage.getItem('projectsActiveView') : null;
@@ -164,11 +165,37 @@ export default function ProjectsView() {
             } else {
                 setTasks([]);
             }
+
+            // Fetch workspace members (profiles joined)
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data: membersData, error: membersError } = await (client as any)
+                    .from('workspace_members')
+                    .select(`
+                        id,
+                        user_id,
+                        role,
+                        profiles:profiles!inner (
+                            first_name,
+                            last_name,
+                            email
+                        )
+                    `)
+                    .eq('workspace_id', currentWorkspace.id)
+                    .order('created_at', { ascending: true });
+
+                if (membersError) throw membersError;
+                setMembers(membersData || []);
+            } catch (mErr) {
+                console.warn('Members fetch warning:', mErr);
+                setMembers([]);
+            }
         } catch (error: any) {
             console.error('Error fetching data:', error);
             toast.error(`Failed to load projects: ${error.message || 'Unknown error'}`);
             setProjects([]);
             setTasks([]);
+            setMembers([]);
         } finally {
             setLoading(false);
         }
@@ -417,6 +444,55 @@ export default function ProjectsView() {
         } catch (error: any) {
             console.error('Create project error:', error);
             toast.error(`Failed to create project: ${error.message || 'Unknown error'}`);
+        }
+    };
+
+    const inviteUser = async () => {
+        if (!currentWorkspace || !user) {
+            toast.error('Select a workspace first');
+            return;
+        }
+        const email = window.prompt('Enter email to invite:');
+        if (!email) return;
+        const role = 'member';
+        const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+        const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const client = supabaseAdmin || supabase;
+        try {
+            // Try modern invites table first
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: e1 } = await (client as any)
+                .from('invites')
+                .insert({
+                    workspace_id: currentWorkspace.id,
+                    email,
+                    role,
+                    invited_by: user.id,
+                    token,
+                    expires_at,
+                    status: 'pending'
+                });
+            if (!e1) {
+                toast.success('Invitation sent');
+                return;
+            }
+            // Fallback to legacy workspace_invitations
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: e2 } = await (client as any)
+                .from('workspace_invitations')
+                .insert({
+                    workspace_id: currentWorkspace.id,
+                    email,
+                    role,
+                    invited_by: user.id,
+                    token,
+                    expires_at
+                });
+            if (e2) throw e2;
+            toast.success('Invitation created');
+        } catch (err: any) {
+            console.error('Invite error:', err);
+            toast.error(err.message || 'Failed to send invite');
         }
     };
 
@@ -879,9 +955,9 @@ export default function ProjectsView() {
                     onDateChange={setCurrentDate}
                 />
             ) : activeView === 'workload' ? (
-                <WorkloadView members={[]} />
+                <WorkloadView members={members} />
             ) : activeView === 'people' ? (
-                <PeopleView members={[]} onInviteUser={() => { /* no-op */ }} />
+                <PeopleView members={members} onInviteUser={inviteUser} />
             ) : (
                 <div className="flex-1 p-6">
                     <div className="bg-white border border-gray-200 rounded-lg p-8 text-center text-gray-600">

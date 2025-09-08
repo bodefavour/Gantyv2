@@ -37,34 +37,36 @@ export default function CreateTaskModal({ isOpen, onClose, projectId, parentTask
 
     const fetchTeamMembers = useCallback(async () => {
         try {
-            // Get workspace owner for the project (simplified approach)
+            // Get workspace members for the project
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data: project } = await (supabase as any)
                 .from('projects')
-                .select(`
-                    workspace_id,
-                    workspaces!projects_workspace_id_fkey (
-                        owner_id,
-                        profiles!workspaces_owner_id_fkey (
-                            id,
-                            first_name,
-                            last_name,
-                            email,
-                            avatar_url
-                        )
-                    )
-                `)
+                .select('workspace_id')
                 .eq('id', projectId)
                 .single();
 
-            if (!project?.workspaces?.profiles) return;
+            if (!project) return;
 
-            // Set the workspace owner as the only team member for now
-            setTeamMembers([project.workspaces.profiles]);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { data, error } = await (supabase as any)
+                .from('workspace_members')
+                .select(`
+          profiles!workspace_members_user_id_fkey (
+            id,
+            first_name,
+            last_name,
+            email,
+            avatar_url
+          )
+        `)
+                .eq('workspace_id', project.workspace_id);
+
+            if (error) throw error;
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            setTeamMembers(data.map((item: any) => item.profiles).filter(Boolean));
         } catch (error) {
             console.error('Error fetching team members:', error);
-            // Fallback: set empty team members
-            setTeamMembers([]);
         }
     }, [projectId]);
 

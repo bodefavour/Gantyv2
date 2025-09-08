@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import Header from './Header';
 import ProjectsView from './views/ProjectsView';
 import GanttView from './views/GanttView';
 import PortfoliosView from './views/PortfoliosView';
@@ -16,6 +17,7 @@ export default function Dashboard() {
         <div className="flex h-screen bg-gray-50">
             <Sidebar />
             <div className="flex-1 flex flex-col overflow-hidden">
+                <Header />
                 <main className="flex-1 overflow-auto">
                     <Routes>
                         <Route path="/" element={<ProjectsView />} />

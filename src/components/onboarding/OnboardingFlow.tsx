@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Calendar, Upload, User, Plus, X, Briefcase, GraduationCap, Target, BarChart3, Users, FileText, Clock, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { supabaseAdmin } from '../../lib/supabase-admin';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -17,6 +16,7 @@ interface OnboardingData {
     projectName: string;
     tasks: string[];
     teamEmails: string[];
+    createdWorkspaceId?: string | null;
     createdProject?: {
         id: string;
         name: string;
@@ -42,6 +42,7 @@ export default function OnboardingFlow() {
         projectName: '',
         tasks: [''],
         teamEmails: ['', '', ''],
+    createdWorkspaceId: null,
         createdProject: null
     });
 
@@ -197,10 +198,24 @@ export default function OnboardingFlow() {
         }
 
         try {
+            let wsId = data.createdWorkspaceId || null;
+            if (!wsId) {
+                // fetch workspace_id from project as fallback
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data: pr, error: prErr } = await (supabase as any)
+                    .from('projects')
+                    .select('workspace_id')
+                    .eq('id', data.createdProject.id)
+                    .single();
+                if (prErr) throw prErr;
+                wsId = pr.workspace_id as string;
+            }
+
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { error } = await (supabase as any)
                 .from('tasks')
                 .insert({
+                    workspace_id: wsId,
                     project_id: data.createdProject.id,
                     name: taskName,
                     start_date: new Date().toISOString().split('T')[0],
@@ -264,12 +279,9 @@ export default function OnboardingFlow() {
 
         setLoading(true);
         try {
-            // First ensure we have a workspace (bypass workspace_members to avoid RLS issues)
-            // Use admin client if available to bypass RLS issues
-            const client = supabaseAdmin || supabase;
-            
+            // Use RPC to create workspace with membership atomically (avoid RLS recursion)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            let { data: existingWorkspaces } = await (client as any)
+            let { data: existingWorkspaces } = await (supabase as any)
                 .from('workspaces')
                 .select('id, name')
                 .eq('owner_id', user.id)
@@ -277,23 +289,16 @@ export default function OnboardingFlow() {
 
             let workspaceId = existingWorkspaces?.[0]?.id;
 
-            // If no workspace exists, create one
+            // If no workspace exists, create one using RPC
             if (!workspaceId) {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const { data: newWorkspace, error: workspaceError } = await (client as any)
-                    .from('workspaces')
-                    .insert({
-                        name: data.businessName || `${data.firstName}'s Workspace`,
-                        description: `Workspace for ${data.useCase} projects`,
-                        owner_id: user.id,
-                    })
-                    .select()
-                    .single();
+                const { data: newWorkspace, error: workspaceError } = await (supabase as any)
+                    .rpc('create_workspace_with_membership', {
+                        p_name: data.businessName || `${data.firstName}'s Workspace`,
+                        p_description: `Workspace for ${data.useCase} projects`
+                    });
 
                 if (workspaceError) throw workspaceError;
-
-                // Skip workspace_members insertion for now to avoid RLS issues
-                // The owner relationship is established by owner_id in workspaces table
                 workspaceId = newWorkspace.id;
             }
 
@@ -316,6 +321,7 @@ export default function OnboardingFlow() {
             // Update the state to show the project was created
             setData(prev => ({
                 ...prev,
+                createdWorkspaceId: workspaceId,
                 createdProject: {
                     id: project.id,
                     name: project.name
@@ -394,25 +400,15 @@ export default function OnboardingFlow() {
 
             if (profileError) throw profileError;
 
-            // Create workspace
-            // Use admin client if available to bypass RLS issues
-            const client = supabaseAdmin || supabase;
-            
+            // Create workspace (using RPC to avoid RLS recursion)
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data: workspace, error: workspaceError } = await (client as any)
-                .from('workspaces')
-                .insert({
-                    name: data.businessName || `${data.firstName}'s Workspace`,
-                    description: `Workspace for ${data.useCase} projects`,
-                    owner_id: user?.id || '',
-                })
-                .select()
-                .single();
+            const { data: workspace, error: workspaceError } = await (supabase as any)
+                .rpc('create_workspace_with_membership', {
+                    p_name: data.businessName || `${data.firstName}'s Workspace`,
+                    p_description: `Workspace for ${data.useCase} projects`
+                });
 
             if (workspaceError) throw workspaceError;
-
-            // Skip workspace_members insertion for now to avoid RLS issues
-            // The owner relationship is established by owner_id in workspaces table
 
             // Create first project if name provided
             if (data.projectName.trim()) {
@@ -436,6 +432,7 @@ export default function OnboardingFlow() {
                 if (validTasks.length > 0) {
 
                     const tasksToInsert = validTasks.map((taskName, index) => ({
+                        workspace_id: workspace?.id as string,
                         project_id: project?.id as string,
                         name: taskName,
                         start_date: new Date().toISOString().split('T')[0],
@@ -967,15 +964,15 @@ export default function OnboardingFlow() {
     );
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-teal-50 via-emerald-50 to-blue-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl shadow-xl p-8 w-full max-w-4xl border border-gray-100">
+        <div className="min-h-screen bg-gradient-to-br from-teal-50 via-emerald-50 to-blue-50 flex items-center justify-center p-3">
+            <div className="bg-white rounded-lg shadow-lg p-5 w-full max-w-4xl border border-gray-100 max-h-[90vh] flex flex-col">
                 {/* Logo */}
-                <div className="text-center mb-8">
-                    <div className="text-2xl font-bold text-teal-700 tracking-wide">GANTTPRO</div>
+                <div className="text-center mb-4">
+                    <div className="text-xl font-bold text-teal-700 tracking-wide">GANTTPRO</div>
                 </div>
 
                 {/* Step Content */}
-                <div className="mb-8 min-h-[400px] flex items-center">
+                <div className="mb-4 min-h-[360px] flex items-start overflow-auto pr-1">
                     {currentStep === 1 && renderStep1()}
                     {currentStep === 2 && renderStep2()}
                     {currentStep === 3 && renderStep3()}
@@ -987,7 +984,7 @@ export default function OnboardingFlow() {
                 </div>
 
                 {/* Progress Bar */}
-                <div className="mb-6">
+                <div className="mb-4">
                     <div className="flex items-center gap-2">
                         {[1, 2, 3, 4, 5, 6, 7, 8].map((step) => (
                             <div
@@ -1006,7 +1003,7 @@ export default function OnboardingFlow() {
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between pt-1">
                     {currentStep === 1 ? (
                         <div></div>
                     ) : (
@@ -1021,7 +1018,7 @@ export default function OnboardingFlow() {
                     <button
                         onClick={handleNext}
                         disabled={loading || !canProceed()}
-                        className="bg-teal-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-teal-700 transition-all duration-200 disabled:opacity-50 shadow-md transform hover:-translate-y-0.5"
+                        className="bg-teal-600 text-white px-5 py-2 rounded-md font-medium hover:bg-teal-700 transition-all duration-200 disabled:opacity-50 shadow-md"
                     >
                         {loading ? 'Creating...' : (currentStep === 8 ? 'Complete setup' : 'Continue')}
                     </button>

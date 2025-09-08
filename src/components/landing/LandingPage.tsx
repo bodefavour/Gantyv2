@@ -1,4 +1,3 @@
-import React from 'react';
 import { Link } from 'react-router-dom';
 import {
     Calendar,
@@ -12,6 +11,8 @@ import {
 } from 'lucide-react';
 import Header from './Header';
 import Footer from './Footer';
+import { supabase } from '../../lib/supabase';
+import toast from 'react-hot-toast';
 
 const features = [
     {
@@ -48,26 +49,37 @@ const features = [
 
 const testimonials = [
     {
-        name: 'Sarah Johnson',
-        role: 'Project Manager',
-        company: 'TechCorp',
-        content: 'Ganty has transformed how we manage our projects. The Gantt charts are intuitive and the collaboration features are outstanding.'
+        name: 'Ben Emmons',
+        role: 'Director of Special Projects',
+        company: 'MagMod',
+        content:
+            'GanttPRO provided the full spectrum of features without feeling overwhelming or being too expensive. The tool does one thing well: project management. It simply provides an intuitive, attractive interface for tracking tasks, dependencies, and resources.'
     },
     {
-        name: 'Michael Chen',
-        role: 'Operations Director',
-        company: 'BuildRight',
-        content: 'The portfolio view gives us incredible insights into our project pipeline. Resource planning has never been easier.'
-    },
-    {
-        name: 'Emily Rodriguez',
-        role: 'Team Lead',
-        company: 'DesignStudio',
-        content: 'The role-based permissions and team collaboration features have streamlined our workflow significantly.'
+        name: 'Lloyd Stephens',
+        role: 'Global Operation Director',
+        company: 'Supernova',
+        content:
+            'GanttPRO has hands down the best Gantt chart functionality. It works just the right way: it’s got the correct dependencies, the nice Work breakdown structure.'
     }
 ];
 
 export default function LandingPage() {
+
+    const handleGoogleAuth = async () => {
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/onboarding?new=true&source=google`
+                }
+            });
+            if (error) throw error;
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'Google authentication failed');
+        }
+    };
+
     return (
         <div className="min-h-screen bg-white">
             <Header />
@@ -91,13 +103,13 @@ export default function LandingPage() {
                             >
                                 Sign up with email
                             </Link>
-                            <Link
-                                to="/auth"
+                            <button
+                                onClick={handleGoogleAuth}
                                 className="bg-white text-gray-700 px-8 py-4 rounded-lg font-semibold border border-gray-300 hover:bg-gray-50 transition-colors flex items-center gap-2"
                             >
                                 <Globe className="w-5 h-5" />
                                 Continue with Google
-                            </Link>
+                            </button>
                         </div>
 
                         <p className="text-sm text-gray-500 mb-8">
@@ -111,6 +123,45 @@ export default function LandingPage() {
                                 ))}
                             </div>
                             <span>based on <strong>1000+</strong> reviews</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Trusted by companies */}
+            <section className="py-10 bg-white">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <p className="text-center text-gray-500 text-sm mb-6">Trusted by growing teams and companies</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-6 items-center opacity-80">
+                        {['Acme', 'Globex', 'Initech', 'Umbrella', 'Hooli', 'Stark'].map((brand) => (
+                            <div key={brand} className="h-10 grayscale flex items-center justify-center border border-gray-100 rounded">
+                                <span className="text-gray-400 text-sm font-semibold">{brand}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Benefits Section */}
+            <section className="py-24 bg-gray-50">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="grid lg:grid-cols-2 gap-12 items-center">
+                        <div>
+                            <h2 className="text-4xl font-bold text-gray-900 mb-4">Benefits of using Ganty Gantt chart creator</h2>
+                            <p className="text-lg text-gray-600 mb-6">Plan projects visually, align teams, and deliver on time with a powerful yet simple Gantt tool.</p>
+                            <ul className="space-y-3 text-gray-700">
+                                <li className="flex gap-3"><CheckCircle className="w-5 h-5 text-teal-600" /> Crystal-clear timelines and dependencies</li>
+                                <li className="flex gap-3"><CheckCircle className="w-5 h-5 text-teal-600" /> Team workload visibility and resource planning</li>
+                                <li className="flex gap-3"><CheckCircle className="w-5 h-5 text-teal-600" /> Real-time collaboration and updates</li>
+                                <li className="flex gap-3"><CheckCircle className="w-5 h-5 text-teal-600" /> Professional reports and portfolio oversight</li>
+                            </ul>
+                            <div className="mt-8 flex gap-4">
+                                <Link to="/product" className="px-6 py-3 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700">Explore product</Link>
+                                <Link to="/templates" className="px-6 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50">Browse templates</Link>
+                            </div>
+                        </div>
+                        <div className="rounded-xl overflow-hidden shadow-xl border border-gray-100">
+                            <img src="https://images.pexels.com/photos/6801642/pexels-photo-6801642.jpeg?auto=compress&cs=tinysrgb&w=1200" alt="Gantt benefits" className="w-full h-full object-cover" />
                         </div>
                     </div>
                 </div>
@@ -140,19 +191,60 @@ export default function LandingPage() {
                 </div>
             </section>
 
+            {/* Advanced planning copy */}
+            <section className="py-24 bg-gradient-to-br from-teal-50 to-emerald-50">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-12 items-center">
+                    <div>
+                        <h2 className="text-4xl font-bold text-gray-900 mb-4">Advanced project planning and management with a simple Gantt chart tool</h2>
+                        <p className="text-lg text-gray-700 mb-6">Visualize timelines, set milestones, manage dependencies, and balance workload — all in an intuitive interface.</p>
+                        <div className="flex gap-4">
+                            <Link to="/demo" className="px-6 py-3 bg-teal-600 text-white rounded-lg font-semibold hover:bg-teal-700">Book a demo</Link>
+                            <Link to="/pricing" className="px-6 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50">See pricing</Link>
+                        </div>
+                    </div>
+                    <div className="rounded-xl overflow-hidden shadow-xl border border-gray-100">
+                        <img src="https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg?auto=compress&cs=tinysrgb&w=1200" alt="Advanced planning" className="w-full h-full object-cover" />
+                    </div>
+                </div>
+            </section>
+
+            {/* Easy steps */}
+            <section className="py-24 bg-white">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="text-center mb-12">
+                        <h2 className="text-4xl font-bold text-gray-900">Making a Gantt chart online is easy</h2>
+                        <p className="text-lg text-gray-600">Get started with a new project or a free template, add tasks and dates, and share with your team.</p>
+                    </div>
+                    <div className="grid md:grid-cols-3 gap-8">
+                        <div className="p-6 border border-gray-200 rounded-xl">
+                            <div className="w-10 h-10 bg-teal-100 text-teal-700 rounded-lg flex items-center justify-center mb-4">1</div>
+                            <h3 className="text-xl font-semibold mb-2">Sign up or use a template</h3>
+                            <p className="text-gray-600">Create a new project or start quicker with free templates tailored to your industry.</p>
+                            <Link to="/templates" className="inline-flex items-center gap-2 text-teal-600 font-medium mt-3">Templates <ArrowRight className="w-4 h-4" /></Link>
+                        </div>
+                        <div className="p-6 border border-gray-200 rounded-xl">
+                            <div className="w-10 h-10 bg-teal-100 text-teal-700 rounded-lg flex items-center justify-center mb-4">2</div>
+                            <h3 className="text-xl font-semibold mb-2">Add tasks, dates, resources</h3>
+                            <p className="text-gray-600">Watch the timeline build itself automatically with dependencies and milestones.</p>
+                        </div>
+                        <div className="p-6 border border-gray-200 rounded-xl">
+                            <div className="w-10 h-10 bg-teal-100 text-teal-700 rounded-lg flex items-center justify-center mb-4">3</div>
+                            <h3 className="text-xl font-semibold mb-2">Collaborate and share</h3>
+                            <p className="text-gray-600">Invite your team to work together, track progress, and share with stakeholders.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* Testimonials Section */}
             <section className="py-24 bg-gray-50">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-16">
-                        <h2 className="text-4xl font-bold text-gray-900 mb-4">
-                            Trusted by teams worldwide
-                        </h2>
-                        <p className="text-xl text-gray-600">
-                            See what our customers have to say about Ganty
-                        </p>
+                        <h2 className="text-4xl font-bold text-gray-900 mb-4">What customers say about our Gantt chart maker</h2>
+                        <p className="text-xl text-gray-600">Real stories from teams managing projects with Ganty</p>
                     </div>
 
-                    <div className="grid md:grid-cols-3 gap-8">
+                    <div className="grid md:grid-cols-2 gap-8">
                         {testimonials.map((testimonial, index) => (
                             <div key={index} className="bg-white p-8 rounded-xl shadow-sm">
                                 <p className="text-gray-600 mb-6 leading-relaxed italic">
@@ -165,6 +257,15 @@ export default function LandingPage() {
                             </div>
                         ))}
                     </div>
+                </div>
+            </section>
+
+            {/* FAQ Teaser */}
+            <section className="py-20 bg-white">
+                <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">FAQ on using the Ganty Gantt chart generator</h2>
+                    <p className="text-gray-600 mb-6">Find answers to the most common questions about planning with Gantt charts.</p>
+                    <Link to="/faq" className="inline-flex items-center gap-2 text-teal-600 font-semibold">Read FAQs <ArrowRight className="w-4 h-4" /></Link>
                 </div>
             </section>
 

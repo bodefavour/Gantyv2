@@ -13,10 +13,10 @@ export default function Header() {
                     </div>
 
                     <div className="hidden md:flex items-center space-x-8">
-                        <a href="#" className="text-gray-700 hover:text-teal-600 transition-colors">Product</a>
-                        <a href="#" className="text-gray-700 hover:text-teal-600 transition-colors">Plans</a>
-                        <a href="#" className="text-gray-700 hover:text-teal-600 transition-colors">Pricing</a>
-                        <a href="#" className="text-gray-700 hover:text-teal-600 transition-colors">Demo</a>
+                        <Link to="/product" className="text-gray-700 hover:text-teal-600 transition-colors">Product</Link>
+                        <Link to="/plans" className="text-gray-700 hover:text-teal-600 transition-colors">Plans</Link>
+                        <Link to="/pricing" className="text-gray-700 hover:text-teal-600 transition-colors">Pricing</Link>
+                        <Link to="/demo" className="text-gray-700 hover:text-teal-600 transition-colors">Demo</Link>
                     </div>
 
                     <div className="flex items-center space-x-4">
