@@ -12,7 +12,8 @@ export default function CommunicationView() {
     const [selectedProject] = useState<string>('all');
     const [activeTab, setActiveTab] = useState('all-tasks');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-    const [tasks, setTasks] = useState<Array<{ id: string; name: string; assigned_to: string | null; projects: { name: string } }>>([]);
+    const [tasks, setTasks] = useState<Array<{ id: string; name: string; assigned_to: string | null; created_by?: string | null; projects: { name: string } }>>([]);
+    const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
     const [comments, setComments] = useState<Array<{ id: string; content: string; created_at: string; author_id: string }>>([]);
     const [loading, setLoading] = useState(true);
     const [commentInput, setCommentInput] = useState('');
@@ -35,12 +36,26 @@ export default function CommunicationView() {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const { data: t, error: te } = await (client as any)
                     .from('tasks')
-                    .select(`id,name,assigned_to, projects!inner(name, workspace_id)`) 
+                    .select(`id,name,assigned_to,created_by, projects!inner(name, workspace_id)`) 
                     .eq('projects.workspace_id', currentWorkspace.id)
                     .order('created_at', { ascending: false });
                 if (te) throw te;
                 setTasks(t || []);
                 if ((t || []).length > 0 && !selectedTaskId) setSelectedTaskId(t[0].id);
+
+                // load comment counts per task (cheap aggregate)
+                const ids = (t || []).map((x: any) => x.id);
+                if (ids.length) {
+                    const { data: agg } = await (client as any)
+                        .from('task_comments')
+                        .select('task_id, count:id', { count: 'exact', head: false })
+                        .in('task_id', ids);
+                    const cc: Record<string, number> = {};
+                    (agg || []).forEach((row: any) => { cc[row.task_id] = (cc[row.task_id] || 0) + 1; });
+                    setCommentCounts(cc);
+                } else {
+                    setCommentCounts({});
+                }
             } catch (e) {
                 console.error(e);
                 setTasks([]);
@@ -82,7 +97,24 @@ export default function CommunicationView() {
         loadComments();
     }, [selectedTaskId]);
 
-    const selectedTask = useMemo(() => tasks.find(t => t.id === selectedTaskId) || null, [tasks, selectedTaskId]);
+    const filteredTasks = useMemo(() => {
+        if (!user) return tasks;
+        switch (activeTab) {
+            case 'with-comments':
+                return tasks.filter(t => (commentCounts[t.id] || 0) > 0);
+            case 'mentioned':
+                // placeholder: no mentions model wired yet
+                return tasks;
+            case 'assigned':
+                return tasks.filter(t => t.assigned_to === user.id);
+            case 'creator':
+                return tasks.filter(t => t.created_by === user.id);
+            default:
+                return tasks;
+        }
+    }, [tasks, activeTab, user, commentCounts]);
+
+    const selectedTask = useMemo(() => filteredTasks.find(t => t.id === selectedTaskId) || null, [filteredTasks, selectedTaskId]);
 
     const addComment = async () => {
         if (!commentInput.trim() || !selectedTaskId || !user) return;
@@ -186,9 +218,9 @@ export default function CommunicationView() {
                             <div className="text-sm text-gray-500">Loading…</div>
                         ) : tasks.length === 0 ? (
                             <div className="text-sm text-gray-500">No tasks</div>
-                        ) : (
+            ) : (
                             <div className="space-y-2">
-                                {tasks.map((task) => (
+                {filteredTasks.map((task) => (
                                     <div
                                         key={task.id}
                                         className={`p-3 rounded cursor-pointer transition-colors ${selectedTaskId === task.id ? 'bg-blue-500 text-white' : 'bg-white hover:bg-gray-100'}`}
@@ -197,9 +229,12 @@ export default function CommunicationView() {
                                         <div className={`font-medium mb-1 ${selectedTaskId === task.id ? 'text-white' : 'text-gray-900'}`}>
                                             {task.name}
                                         </div>
-                                        <div className={`text-sm flex items-center gap-1 ${selectedTaskId === task.id ? 'text-blue-100' : 'text-gray-600'}`}>
+                    <div className={`text-sm flex items-center justify-between ${selectedTaskId === task.id ? 'text-blue-100' : 'text-gray-600'}`}>
+                        <div className="flex items-center gap-1">
                                             <User className="w-3 h-3" />
                                             <span>{task.projects?.name || '—'}</span>
+                        </div>
+                        <span className="text-xs">{commentCounts[task.id] || 0}</span>
                                         </div>
                                     </div>
                                 ))}
@@ -208,7 +243,7 @@ export default function CommunicationView() {
                     </div>
 
                     {/* Task Details */}
-                    <div className="px-4 pb-4 text-sm text-gray-600">{tasks.length} total</div>
+                    <div className="px-4 pb-4 text-sm text-gray-600">{filteredTasks.length} total</div>
                 </div>
 
                 {/* Comments Section */}

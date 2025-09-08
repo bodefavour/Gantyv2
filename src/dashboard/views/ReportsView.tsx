@@ -122,8 +122,10 @@ export default function ReportsView() {
 
         {/* Main Content */}
             <div className="flex-1 p-6">
+                {activeTab === 'all' && (
+                <>
                 <div className="mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-1">Project status</h2>
+                    <h2 className="text-lg font-semibold text-gray-900 mb-1">Project status</h2>
                 </div>
 
                 <div className="grid lg:grid-cols-2 gap-8">
@@ -214,6 +216,11 @@ export default function ReportsView() {
                         </div>
                     </div>
                 </div>
+                </>
+                )}
+                {activeTab !== 'all' && (
+                    <div className="text-center text-gray-500 py-16 capitalize">{activeTab.replace('-', ' ')} report coming soon</div>
+                )}
             </div>
 
             {/* Bottom Panel */}

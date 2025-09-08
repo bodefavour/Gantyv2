@@ -36,10 +36,10 @@ import CalendarView from './projects/CalendarView';
 import WorkloadView from './projects/WorkloadView';
 import PeopleView from './projects/PeopleView';
 import CreateProjectModal from '../modals/CreateProjectModal';
+import TaskDetailsModal from '../modals/TaskDetailsModal';
 
 interface Project {
     id: string;
-    workspace_id: string;
     name: string;
     description: string | null;
     start_date: string;
@@ -62,6 +62,9 @@ interface Task {
     status: string;
     priority: string;
     assigned_to: string | null;
+    created_by?: string | null;
+    estimated_hours?: number | null;
+    actual_hours?: number | null;
     created_at: string;
 }
 
@@ -96,6 +99,8 @@ export default function ProjectsView() {
     const [sortAsc, setSortAsc] = useState(true);
     const [showOnlyMine, setShowOnlyMine] = useState(false);
     const [dayScaleIndex, setDayScaleIndex] = useState(1); // 0 small, 1 medium, 2 large
+    const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
+    const [dragging, setDragging] = useState<{ id: string; originX: number; start: Date; end: Date } | null>(null);
 
     useEffect(() => {
         if (currentWorkspace && user) {
@@ -121,7 +126,7 @@ export default function ProjectsView() {
             console.log('Fetching projects for workspace:', currentWorkspace.id);
 
             // Use admin client if available to bypass RLS issues
-            const client = supabase; // prefer RLS-scoped client
+            const client = supabaseAdmin || supabase;
 
             // Fetch projects with better error handling
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,13 +151,13 @@ export default function ProjectsView() {
             }
 
             // Fetch all tasks for all projects
-            // Fetch all tasks for the workspace
             if (fetchedProjects.length > 0) {
+                const projectIds = fetchedProjects.map((p: Project) => p.id);
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const { data: tasksData, error: tasksError } = await (client as any)
                     .from('tasks')
                     .select('*')
-                    .eq('workspace_id', currentWorkspace.id)
+                    .in('project_id', projectIds)
                     .order('start_date');
 
                 if (tasksError) {
@@ -169,9 +174,8 @@ export default function ProjectsView() {
 
             // Fetch workspace members (profiles joined)
             try {
-                const clientJoin = supabaseAdmin || supabase;
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const { data: membersData, error: membersError } = await (clientJoin as any)
+                const { data: membersData, error: membersError } = await (client as any)
                     .from('workspace_members')
                     .select(`
                         id,
@@ -238,6 +242,9 @@ export default function ProjectsView() {
         };
     };
 
+    const openTaskModal = (taskId: string) => setDetailTaskId(taskId);
+    const closeTaskModal = () => setDetailTaskId(null);
+
     const getStatusIcon = (status: string, progress: number) => {
         if (status === 'completed' || progress === 100) {
             return <CheckCircle className="w-4 h-4 text-green-500" />;
@@ -275,10 +282,6 @@ export default function ProjectsView() {
             toast.error('User not authenticated');
             return;
         }
-        if (!currentWorkspace) {
-            toast.error('No workspace selected');
-            return;
-        }
 
         setAddingTask(true);
         try {
@@ -286,12 +289,11 @@ export default function ProjectsView() {
             const endDate = addDays(startDate, 7); // Default 7-day duration
 
             // Use admin client if available for RLS-safe inserts
-        const client = supabase; // prefer RLS-scoped client
+            const client = supabaseAdmin || supabase;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const { data, error } = await (client as any)
                 .from('tasks')
                 .insert({
-            workspace_id: targetProject?.workspace_id || currentWorkspace.id,
                     project_id: targetProject.id,
                     name: newTaskName.trim(),
                     description: null,
@@ -739,7 +741,7 @@ export default function ProjectsView() {
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2">
                                                                 {getStatusIcon(task.status, task.progress)}
-                                                                <span className="font-medium text-gray-900 truncate">{task.name}</span>
+                                                                <button onClick={() => openTaskModal(task.id)} className="font-medium text-gray-900 truncate text-left hover:text-blue-600">{task.name}</button>
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-4 text-sm">
@@ -897,6 +899,21 @@ export default function ProjectsView() {
                                             {expanded && projectTasks.map((task) => {
                                                 const position = getTaskPosition(task);
 
+                                                const onMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
+                                                    setDragging({ id: task.id, originX: e.clientX, start: new Date(task.start_date), end: new Date(task.end_date) });
+                                                };
+
+                                                const onMouseUp = () => {
+                                                    if (!dragging || dragging.id !== task.id) return;
+                                                    setDragging(null);
+                                                };
+
+                                                const onClick: React.MouseEventHandler<HTMLDivElement> = () => {
+                                                    // Avoid click if we just dragged; naive check
+                                                    if (dragging) return;
+                                                    openTaskModal(task.id);
+                                                };
+
                                                 return (
                                                     <div key={task.id} className="relative h-10 flex items-center">
                                                         <div
@@ -906,6 +923,39 @@ export default function ProjectsView() {
                                                                 width: position.width,
                                                             }}
                                                             title={`${task.name} (${format(new Date(task.start_date), 'MM/dd/yyyy')} - ${format(new Date(task.end_date), 'MM/dd/yyyy')})`}
+                                                            onMouseDown={onMouseDown}
+                                                            onMouseUp={onMouseUp}
+                                                            onClick={onClick}
+                                                            onMouseMove={(e) => {
+                                                                if (!dragging || dragging.id !== task.id) return;
+                                                                const deltaDays = Math.round((e.clientX - dragging.originX) / dayWidth);
+                                                                if (deltaDays === 0) return;
+                                                                const newStart = addDays(dragging.start, deltaDays);
+                                                                const newEnd = addDays(dragging.end, deltaDays);
+                                                                setTasks(prev => prev.map(t => t.id === task.id ? { ...t, start_date: format(newStart, 'yyyy-MM-dd'), end_date: format(newEnd, 'yyyy-MM-dd') } : t));
+                                                            }}
+                                                            onMouseLeave={() => {
+                                                                if (dragging && dragging.id === task.id) {
+                                                                    setDragging(null);
+                                                                }
+                                                            }}
+                                                            onDoubleClick={() => openTaskModal(task.id)}
+                                                            onBlur={() => { /* noop */ }}
+                                                            onContextMenu={(e) => {
+                                                                e.preventDefault();
+                                                                openTaskModal(task.id);
+                                                            }}
+                                                            onMouseUpCapture={(e) => {
+                                                                if (dragging && dragging.id === task.id) {
+                                                                    const deltaDays = Math.round((e.clientX - dragging.originX) / dayWidth);
+                                                                    if (deltaDays !== 0) {
+                                                                        const start = addDays(dragging.start, deltaDays);
+                                                                        const end = addDays(dragging.end, deltaDays);
+                                                                        updateTaskDates(task.id, start, end);
+                                                                    }
+                                                                    setDragging(null);
+                                                                }
+                                                            }}
                                                         >
                                                             <span className="text-white text-xs font-medium truncate">
                                                                 {task.name}
@@ -1009,6 +1059,13 @@ export default function ProjectsView() {
                     setProjects(prev => [project, ...prev]);
                     fetchData(); // Refresh data to ensure consistency
                 }}
+            />
+
+            {/* Task Details Modal */}
+            <TaskDetailsModal
+                open={!!detailTaskId}
+                task={detailTaskId ? (tasks.find(t => t.id === detailTaskId) as any) : null}
+                onClose={closeTaskModal}
             />
         </div>
     );
