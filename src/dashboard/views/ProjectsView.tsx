@@ -101,6 +101,8 @@ export default function ProjectsView() {
     const [dayScaleIndex, setDayScaleIndex] = useState(1); // 0 small, 1 medium, 2 large
     const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
     const [dragging, setDragging] = useState<{ id: string; originX: number; start: Date; end: Date } | null>(null);
+    const [showCustomFieldsPanel, setShowCustomFieldsPanel] = useState(false);
+    const [statusFilter, setStatusFilter] = useState<string>('all');
 
     useEffect(() => {
         if (currentWorkspace && user) {
@@ -221,13 +223,14 @@ export default function ProjectsView() {
     const tasksForRender = React.useMemo(() => {
         let arr = [...tasks];
         if (showOnlyMine && user?.id) arr = arr.filter(t => t.assigned_to === user.id);
+        if (statusFilter !== 'all') arr = arr.filter(t => (t.status || 'not_started') === statusFilter);
         arr.sort((a, b) => {
             const aT = new Date(a.start_date).getTime();
             const bT = new Date(b.start_date).getTime();
             return sortAsc ? aT - bT : bT - aT;
         });
         return arr;
-    }, [tasks, showOnlyMine, user?.id, sortAsc]);
+    }, [tasks, showOnlyMine, user?.id, sortAsc, statusFilter]);
 
     const getTaskPosition = (task: Task) => {
         const startDate = new Date(task.start_date);
@@ -466,41 +469,13 @@ export default function ProjectsView() {
         const email = window.prompt('Enter email to invite:');
         if (!email) return;
         const role = 'member';
-        const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-        const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-        const client = supabaseAdmin || supabase;
         try {
-            // Try modern invites table first
+            // Use SECURITY DEFINER RPC to bypass RLS safely
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error: e1 } = await (client as any)
-                .from('invites')
-                .insert({
-                    workspace_id: currentWorkspace.id,
-                    email,
-                    role,
-                    invited_by: user.id,
-                    token,
-                    expires_at,
-                    status: 'pending'
-                });
-            if (!e1) {
-                toast.success('Invitation sent');
-                return;
-            }
-            // Fallback to legacy workspace_invitations
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error: e2 } = await (client as any)
-                .from('workspace_invitations')
-                .insert({
-                    workspace_id: currentWorkspace.id,
-                    email,
-                    role,
-                    invited_by: user.id,
-                    token,
-                    expires_at
-                });
-            if (e2) throw e2;
-            toast.success('Invitation created');
+            const { error } = await (supabase as any)
+                .rpc('create_workspace_invite', { p_workspace_id: currentWorkspace.id, p_email: email, p_role: role });
+            if (error) throw error;
+            toast.success('Invitation sent');
         } catch (err: any) {
             console.error('Invite error:', err);
             toast.error(err.message || 'Failed to send invite');
@@ -549,10 +524,29 @@ export default function ProjectsView() {
                             <Plus className="w-4 h-4" />
                             New Project
                         </button>
-                        <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                        <button 
+                            onClick={() => {
+                                const searchTerm = window.prompt('Search tasks by name:');
+                                if (searchTerm) {
+                                    const found = tasks.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+                                    if (found.length === 0) {
+                                        toast.error('No tasks found');
+                                    } else {
+                                        toast.success(`Found ${found.length} task(s)`);
+                                        // Could implement highlighting or filtering here
+                                    }
+                                }
+                            }}
+                            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Search tasks"
+                        >
                             <Search className="w-4 h-4" />
                         </button>
-                        <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                        <button 
+                            onClick={() => setShowCustomFieldsPanel(v => !v)}
+                            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Toggle filters"
+                        >
                             <Filter className="w-4 h-4" />
                         </button>
                     </div>
@@ -609,7 +603,7 @@ export default function ProjectsView() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button onClick={() => toast('Custom fields coming soon')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button onClick={() => setShowCustomFieldsPanel(v => !v)} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
                             <Filter className="w-4 h-4" />
                             Custom fields
                         </button>
@@ -663,6 +657,29 @@ export default function ProjectsView() {
                     </div>
                 </div>
             </div>
+            {showCustomFieldsPanel && (
+                <div className="bg-white border-b border-gray-200 px-6 py-3">
+                    <div className="flex items-center gap-4 text-sm">
+                        <div className="text-gray-700 font-medium">Status</div>
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="border border-gray-300 rounded px-2 py-1 text-sm"
+                        >
+                            <option value="all">All</option>
+                            <option value="not_started">Not started</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="on_hold">On hold</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                        <div className="h-4 w-px bg-gray-300" />
+                        <label className="flex items-center gap-2 text-gray-700">
+                            <input type="checkbox" className="rounded border-gray-300" checked={showOnlyMine} onChange={() => setShowOnlyMine(v=>!v)} />
+                            Only my tasks
+                        </label>
+                    </div>
+                </div>
+            )}
 
             {/* Main Content: switch by activeView; keep Gantt markup unmodified */}
             {activeView === 'gantt' ? (
@@ -763,9 +780,24 @@ export default function ProjectsView() {
                                                                 </span>
                                                             </div>
                                                             <button
-                                                                onClick={() => {
-                                                                    // Add context menu functionality later
-                                                                    console.log('Task options for:', task.name);
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const options = ['Edit task', 'Duplicate', 'Delete', 'Add subtask'];
+                                                                    const choice = window.prompt(`Options for "${task.name}":\n${options.map((o,i) => `${i+1}. ${o}`).join('\n')}\n\nEnter choice (1-4):`);
+                                                                    if (choice === '1') openTaskModal(task.id);
+                                                                    else if (choice === '3') {
+                                                                        if (window.confirm(`Delete "${task.name}"?`)) {
+                                                                            deleteTask(task.id);
+                                                                        }
+                                                                    }
+                                                                    else if (choice === '2') {
+                                                                        const newName = window.prompt('New task name:', task.name + ' (copy)');
+                                                                        if (newName) {
+                                                                            // Duplicate task logic - simplified
+                                                                            setNewTaskName(newName);
+                                                                            addTask();
+                                                                        }
+                                                                    }
                                                                 }}
                                                                 className="text-gray-400 hover:text-gray-600 transition-colors"
                                                             >
@@ -819,7 +851,42 @@ export default function ProjectsView() {
                                             </button>
                                         )}
                                     </div>
-                                    <button className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors text-sm">
+                                    <button 
+                                        onClick={async () => {
+                                            const milestoneName = window.prompt('Milestone name:');
+                                            if (!milestoneName) return;
+                                            const targetProject = selectedProject ? projects.find(p => p.id === selectedProject) : projects[0];
+                                            if (!targetProject || !user) return;
+                                            
+                                            try {
+                                                const client = supabaseAdmin || supabase;
+                                                const { data, error } = await (client as any)
+                                                    .from('tasks')
+                                                    .insert({
+                                                        project_id: targetProject.id,
+                                                        name: milestoneName.trim(),
+                                                        description: 'Milestone',
+                                                        start_date: format(new Date(), 'yyyy-MM-dd'),
+                                                        end_date: format(new Date(), 'yyyy-MM-dd'),
+                                                        duration: 0,
+                                                        progress: 0,
+                                                        status: 'not_started',
+                                                        priority: 'high',
+                                                        assigned_to: null,
+                                                        created_by: user.id,
+                                                    })
+                                                    .select()
+                                                    .single();
+                                                if (error) throw error;
+                                                setTasks(prev => [...prev, data]);
+                                                toast.success(`Milestone "${milestoneName}" added`);
+                                            } catch (error: any) {
+                                                console.error('Add milestone error:', error);
+                                                toast.error(`Failed to add milestone: ${error.message}`);
+                                            }
+                                        }}
+                                        className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors text-sm"
+                                    >
                                         <Plus className="w-4 h-4" />
                                         Add a milestone
                                     </button>
@@ -883,16 +950,27 @@ export default function ProjectsView() {
                     <div className="relative">
                         {/* Grid overlay */}
                         <div className="absolute inset-0 z-0 pointer-events-none">
-                            <div className="flex" style={{ width: visibleDays.length * dayWidth }}>
+                            <div className="flex h-full" style={{ width: visibleDays.length * dayWidth }}>
                                 {visibleDays.map((date, idx) => {
                                     const isWeekend = [0, 6].includes(date.getDay());
                                     const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+                                    const isMonthStart = date.getDate() === 1;
                                     return (
                                         <div
                                             key={idx}
-                                            className={`flex-shrink-0 h-full border-r border-gray-100 ${isWeekend ? 'bg-gray-50' : ''} ${isToday ? 'bg-blue-50/60' : ''}`}
+                                            className={`flex-shrink-0 h-full border-r ${
+                                                isMonthStart ? 'border-gray-300' : 'border-gray-100'
+                                            } ${isWeekend ? 'bg-gray-50' : 'bg-white'} ${isToday ? 'bg-blue-50/60' : ''}`}
                                             style={{ width: dayWidth }}
-                                        />
+                                        >
+                                            {/* Hour marks for larger day widths */}
+                                            {dayWidth >= 32 && (
+                                                <div className="h-full flex flex-col">
+                                                    <div className="flex-1 border-b border-gray-50"></div>
+                                                    <div className="flex-1"></div>
+                                                </div>
+                                            )}
+                                        </div>
                                     );
                                 })}
                             </div>
@@ -936,7 +1014,10 @@ export default function ProjectsView() {
                                                     <div key={task.id} className="relative h-10 flex items-center">
                                                         {/* main bar */}
                                                         <div
-                                                            className={`absolute h-6 rounded-sm opacity-90 hover:opacity-100 transition-opacity cursor-pointer flex items-center px-2 ${getStatusColor(task.status)}`}
+                                                            className={`absolute h-6 rounded-sm transition-all duration-150 cursor-pointer flex items-center px-2 ${
+                                                                dragging?.id === task.id ? 'opacity-80 scale-105 shadow-lg z-30' : 
+                                                                resizing?.id === task.id ? 'opacity-80 z-30' : 'opacity-90 hover:opacity-100'
+                                                            } ${getStatusColor(task.status)}`}
                                                             style={{ left: position.left, width: position.width }}
                                                             title={`${task.name} (${format(new Date(task.start_date), 'MM/dd/yyyy')} - ${format(new Date(task.end_date), 'MM/dd/yyyy')})`}
                                                             onMouseDown={onMouseDown}
@@ -950,7 +1031,12 @@ export default function ProjectsView() {
                                                                 const newEnd = addDays(dragging.end, deltaDays);
                                                                 setTasks(prev => prev.map(t => t.id === task.id ? { ...t, start_date: format(newStart, 'yyyy-MM-dd'), end_date: format(newEnd, 'yyyy-MM-dd') } : t));
                                                             }}
-                                                            onMouseLeave={() => { if (dragging && dragging.id === task.id) setDragging(null); }}
+                                                            onMouseLeave={() => { 
+                                                                if (dragging && dragging.id === task.id) {
+                                                                    // Persist the current state when leaving
+                                                                    setDragging(null);
+                                                                }
+                                                            }}
                                                             onDoubleClick={() => openTaskModal(task.id)}
                                                             onContextMenu={(e) => { e.preventDefault(); openTaskModal(task.id); }}
                                                             onMouseUpCapture={(e) => {
@@ -1069,8 +1155,19 @@ export default function ProjectsView() {
                 <PeopleView members={members} onInviteUser={inviteUser} />
             ) : (
                 <div className="flex-1 p-6">
-                    <div className="bg-white border border-gray-200 rounded-lg p-8 text-center text-gray-600">
-                        Dashboard view coming soon
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-500">Projects</div>
+                            <div className="text-2xl font-semibold text-gray-900">{projects.length}</div>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-500">Tasks</div>
+                            <div className="text-2xl font-semibold text-gray-900">{tasks.length}</div>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-500">Completed tasks</div>
+                            <div className="text-2xl font-semibold text-gray-900">{tasks.filter(t=>t.status==='completed' || t.progress===100).length}</div>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1079,11 +1176,17 @@ export default function ProjectsView() {
             <div className="bg-white border-t border-gray-200 px-6 py-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-6">
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button 
+                            onClick={() => toast('Attachments feature: Upload files and link them to tasks')}
+                            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             <Calendar className="w-4 h-4" />
                             Attachments
                         </button>
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button 
+                            onClick={() => toast('Time tracker: Track time spent on tasks. Coming in next update!')}
+                            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             <Users className="w-4 h-4" />
                             Task time tracker
                         </button>
@@ -1091,10 +1194,19 @@ export default function ProjectsView() {
 
                     <div className="flex items-center gap-6">
                         <span className="text-sm text-gray-500">Apps</span>
-                        <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                        <button 
+                            onClick={() => {
+                                const apps = ['Calendar sync', 'Slack integration', 'Email notifications', 'Export tools'];
+                                toast(`Available integrations:\n${apps.join('\n')}`);
+                            }}
+                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                        >
                             <MoreHorizontal className="w-4 h-4" />
                         </button>
-                        <button className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 transition-colors">
+                        <button 
+                            onClick={() => window.open('https://help.ganty.com', '_blank')}
+                            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 transition-colors"
+                        >
                             <TrendingUp className="w-4 h-4" />
                             Learning center
                         </button>

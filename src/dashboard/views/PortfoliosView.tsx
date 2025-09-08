@@ -160,8 +160,58 @@ export default function PortfoliosView() {
                     )}
                 </div>
                 )}
-                {activeTab !== 'projects' && (
-                    <div className="text-center py-16 text-gray-500">{activeTab} view coming soon</div>
+                {activeTab === 'gantt' && (
+                    <div className="overflow-x-auto border border-gray-200 rounded">
+                        <div className="min-w-[800px]">
+                            <div className="flex text-xs text-gray-600 border-b border-gray-200">
+                                {Array.from({ length: 12 }).map((_, i) => (
+                                    <div key={i} className="flex-1 text-center py-2 border-r last:border-r-0">M{i+1}</div>
+                                ))}
+                            </div>
+                            {projects.map(p => (
+                                <div key={p.id} className="h-10 border-b last:border-b-0 relative">
+                                    <div className="absolute left-0 top-0 bottom-0 px-3 flex items-center text-sm text-gray-700">
+                                        {p.name}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                {activeTab === 'list' && (
+                    <div>
+                        <div className="grid grid-cols-3 gap-4 px-2 py-2 text-sm font-medium text-gray-700 border-b"> 
+                            <span>Name</span>
+                            <span>Status</span>
+                            <span>Dates</span>
+                        </div>
+                        {projects.map(p => (
+                            <div key={p.id} className="grid grid-cols-3 gap-4 px-2 py-2 text-sm border-b last:border-b-0">
+                                <span className="text-gray-900">{p.name}</span>
+                                <span className="capitalize text-gray-600">{p.status?.replace('_',' ') || '—'}</span>
+                                <span className="text-gray-600">{p.start_date || '—'} → {p.end_date || '—'}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {activeTab === 'workload' && (
+                    <div className="text-sm text-gray-600">Workload summary: {projects.length} projects loaded.</div>
+                )}
+                {activeTab === 'dashboard' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-500">Projects</div>
+                            <div className="text-2xl font-semibold text-gray-900">{projects.length}</div>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-500">Active</div>
+                            <div className="text-2xl font-semibold text-gray-900">{projects.filter(p=>p.status==='active').length}</div>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="text-sm text-gray-500">Completed</div>
+                            <div className="text-2xl font-semibold text-gray-900">{projects.filter(p=>p.status==='completed').length}</div>
+                        </div>
+                    </div>
                 )}
             </div>
         </div>

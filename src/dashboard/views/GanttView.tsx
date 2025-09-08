@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArrowLeft, Filter, Download, Settings, Calendar, Users, BarChart3, List, Table, Eye, Expand as ExpandAll, ListCollapse as CollapseAll } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
+import toast from 'react-hot-toast';
 import GanttChart from '../gantt/GanttChart';
 import TaskList from '../gantt/TaskList';
 
@@ -96,7 +97,11 @@ export default function GanttView() {
             <div className="bg-white border-b border-gray-200 px-6 py-4">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-4">
-                        <button className="text-gray-400 hover:text-gray-600 transition-colors">
+                        <button 
+                            onClick={() => window.history.back()}
+                            className="text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Go back"
+                        >
                             <ArrowLeft className="w-5 h-5" />
                         </button>
                         <div>
@@ -110,13 +115,25 @@ export default function GanttView() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                        <button 
+                            onClick={() => toast('Project settings: Configure permissions, deadlines, and integrations')}
+                            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Project settings"
+                        >
                             <Settings className="w-4 h-4" />
                         </button>
-                        <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                        <button 
+                            onClick={() => toast('View options: Change display mode, zoom level, and filters')}
+                            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="View options"
+                        >
                             <Eye className="w-4 h-4" />
                         </button>
-                        <button className="p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                        <button 
+                            onClick={() => toast('Advanced settings: Custom fields, workflows, and automation')}
+                            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                            title="Advanced settings"
+                        >
                             <Settings className="w-4 h-4" />
                         </button>
                     </div>
@@ -145,11 +162,17 @@ export default function GanttView() {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
-                            <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                            <button 
+                                onClick={() => toast('Expand all tasks and subtasks')}
+                                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
                                 <ExpandAll className="w-4 h-4" />
                             </button>
                             <span className="text-sm text-gray-500">Expand all</span>
-                            <button className="p-1 text-gray-400 hover:text-gray-600 transition-colors">
+                            <button 
+                                onClick={() => toast('Collapse all tasks to show only top level')}
+                                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                            >
                                 <CollapseAll className="w-4 h-4" />
                             </button>
                             <span className="text-sm text-gray-500">Collapse all</span>
@@ -157,21 +180,43 @@ export default function GanttView() {
 
                         <div className="h-4 w-px bg-gray-300"></div>
 
-                        <button className="text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button 
+                            onClick={() => toast('Cascade sorting: Sort tasks by dependencies and priorities')}
+                            className="text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             Cascade sorting
                         </button>
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button 
+                            onClick={() => toast('Custom fields: Add project-specific data fields to tasks')}
+                            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             <Filter className="w-4 h-4" />
                             Custom fields
                         </button>
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button 
+                            onClick={() => toast('Filter tasks by status, assignee, priority, or custom criteria')}
+                            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             <Filter className="w-4 h-4" />
                             Filter
                         </button>
-                        <button className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+                        <button 
+                            onClick={() => {
+                                const csvData = tasks.map(t => `"${t.name}","${t.start_date}","${t.end_date}","${t.status}"`).join('\n');
+                                const blob = new Blob(['Task,Start,End,Status\n' + csvData], { type: 'text/csv' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = 'gantt-tasks.csv';
+                                a.click();
+                                URL.revokeObjectURL(url);
+                                toast.success('Tasks exported to CSV');
+                            }}
+                            className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                        >
                             <Download className="w-4 h-4" />
                             Export
                         </button>
@@ -187,16 +232,22 @@ export default function GanttView() {
                         <TaskList tasks={tasks} />
                         <GanttChart tasks={tasks} />
                     </div>
-                ) : (
+                ) : activeView === 'list' ? (
                     <div className="p-6">
-                        <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
-                            <Calendar className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900 mb-2">
-                                {viewTabs.find(tab => tab.id === activeView)?.name} View
-                            </h3>
-                            <p className="text-gray-600">This view is coming soon.</p>
+                        <div className="grid grid-cols-4 gap-4 text-sm font-medium text-gray-700 border-b pb-2">
+                            <span>Name</span><span>Start</span><span>End</span><span>Status</span>
                         </div>
+                        {tasks.map(t => (
+                            <div key={t.id} className="grid grid-cols-4 gap-4 text-sm border-b py-2">
+                                <span className="text-gray-900">{t.name}</span>
+                                <span className="text-gray-600">{t.start_date}</span>
+                                <span className="text-gray-600">{t.end_date}</span>
+                                <span className="text-gray-600 capitalize">{t.status?.replace('_',' ')}</span>
+                            </div>
+                        ))}
                     </div>
+                ) : (
+                    <div className="p-6 text-sm text-gray-600">View "{activeView}" is enabled but not configured yet.</div>
                 )}
             </div>
         </div>

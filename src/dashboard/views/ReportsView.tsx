@@ -218,8 +218,21 @@ export default function ReportsView() {
                 </div>
                 </>
                 )}
-                {activeTab !== 'all' && (
-                    <div className="text-center text-gray-500 py-16 capitalize">{activeTab.replace('-', ' ')} report coming soon</div>
+                {activeTab === 'progress' && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {Object.entries(statusCounts).map(([k,v]) => (
+                            <div key={k} className="bg-white border border-gray-200 rounded p-4">
+                                <div className="text-sm text-gray-500 capitalize">{k.replace('_',' ')}</div>
+                                <div className="text-2xl font-semibold text-gray-900">{v}</div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {activeTab === 'budget' && (
+                    <div className="text-sm text-gray-600">No budget fields yet. Add fields to projects to enable budget reporting.</div>
+                )}
+                {activeTab === 'time-on-tasks' && (
+                    <div className="text-sm text-gray-600">Time tracking not enabled. Hook your time tracker to see charts.</div>
                 )}
             </div>
 
