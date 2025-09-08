@@ -188,6 +188,104 @@ export default function LandingPage() {
                             </div>
                         ))}
                     </div>
+                    {/* Stats */}
+                    <div className="mt-24 grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+                        <div>
+                            <div className="text-4xl font-bold text-teal-600">98%</div>
+                            <p className="text-sm text-gray-600 mt-1">On-time delivery increase</p>
+                        </div>
+                        <div>
+                            <div className="text-4xl font-bold text-teal-600">4.7x</div>
+                            <p className="text-sm text-gray-600 mt-1">Faster planning cycles</p>
+                        </div>
+                        <div>
+                            <div className="text-4xl font-bold text-teal-600">32%</div>
+                            <p className="text-sm text-gray-600 mt-1">Resource waste reduced</p>
+                        </div>
+                        <div>
+                            <div className="text-4xl font-bold text-teal-600">+12hrs</div>
+                            <p className="text-sm text-gray-600 mt-1">Saved weekly per PM</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Feature Matrix */}
+            <section className="py-24 bg-gray-50">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="mb-12 text-center">
+                        <h2 className="text-3xl font-bold text-gray-900 mb-3">Built for modern delivery teams</h2>
+                        <p className="text-lg text-gray-600">Everything from planning to execution—no plug-ins required.</p>
+                    </div>
+                    <div className="overflow-x-auto border border-gray-200 rounded-xl bg-white shadow-sm">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-gray-100 text-gray-700">
+                                <tr>
+                                    <th className="py-3 px-4 font-semibold">Capability</th>
+                                    <th className="py-3 px-4 font-semibold">Ganty</th>
+                                    <th className="py-3 px-4 font-semibold">Spreadsheet</th>
+                                    <th className="py-3 px-4 font-semibold">Generic PM Tool</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {[
+                                    ['Drag & drop timeline', 'Yes', 'Manual updates', 'Partial'],
+                                    ['True dependencies', 'FS, SS, FF, SF', 'No', 'Limited'],
+                                    ['Critical path', 'Auto highlight', 'Manual calc', 'Plugin'],
+                                    ['Portfolio view', 'Native', 'No', 'Add-on'],
+                                    ['Real-time sync', 'Built-in', 'No', 'Polling'],
+                                    ['Workload & capacity', 'Integrated', 'No', 'Separate module'],
+                                ].map((row,i)=>(
+                                    <tr key={i} className="hover:bg-gray-50">
+                                        <td className="py-3 px-4 font-medium text-gray-800">{row[0]}</td>
+                                        <td className="py-3 px-4 text-teal-600 font-semibold">{row[1]}</td>
+                                        <td className="py-3 px-4 text-gray-500">{row[2]}</td>
+                                        <td className="py-3 px-4 text-gray-500">{row[3]}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            {/* Security & Compliance */}
+            <section className="py-24 bg-white">
+                <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="text-center mb-10">
+                        <h2 className="text-3xl font-bold text-gray-900 mb-3">Enterprise-grade security</h2>
+                        <p className="text-lg text-gray-600">Your projects and data are protected with industry best practices.</p>
+                    </div>
+                    <div className="grid md:grid-cols-3 gap-8">
+                        {[{
+                            t:'Data Protection', d:'Encrypted at rest & in transit. Daily backups and regional redundancy.'
+                        },{
+                            t:'Access Control', d:'Granular roles for workspaces, projects, tasks & portfolio layers.'
+                        },{
+                            t:'Audit Trail', d:'Comprehensive activity logs for compliance & accountability.'
+                        }].map((b,i)=>(
+                            <div key={i} className="p-6 border border-gray-200 rounded-xl bg-gray-50">
+                                <h3 className="font-semibold text-gray-800 mb-2">{b.t}</h3>
+                                <p className="text-sm text-gray-600 leading-relaxed">{b.d}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* Integrations Teaser */}
+            <section className="py-24 bg-gray-50">
+                <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+                    <h2 className="text-3xl font-bold text-gray-900 mb-4">Works with the tools you already use</h2>
+                    <p className="text-lg text-gray-600 mb-10">Upcoming integrations for chat, identity, storage, and automation.</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto">
+                        {['Slack','Google Drive','Jira','Azure AD','Notion','GitHub','Zapier','Teams'].map(app=>(
+                            <div key={app} className="h-20 flex items-center justify-center border border-gray-200 bg-white rounded-lg text-sm font-medium text-gray-600 hover:shadow-sm">
+                                {app}
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-sm text-gray-500 mt-8">Need something specific? <Link to="/contact" className="text-teal-600 font-medium">Request an integration</Link>.</p>
                 </div>
             </section>
 

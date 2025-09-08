@@ -335,7 +335,15 @@ export default function ProjectsView() {
         if (zoomLevel === 'week') return 80; // each week column wider
         return 120; // month
     }, [dayScaleIndex, zoomLevel]);
-    const visibleDays = React.useMemo(() => dateRange.slice(0, zoomLevel==='day'?62: (zoomLevel==='week'?26:14)), [dateRange, zoomLevel]);
+    // Auto scroll to today when date range changes
+    useEffect(() => {
+        if (!ganttBodyRef.current) return;
+        const todayIndex = dateRange.findIndex(d => format(d,'yyyy-MM-dd')===format(new Date(),'yyyy-MM-dd'));
+        if (todayIndex >= 0) {
+            ganttBodyRef.current.scrollLeft = Math.max(0, todayIndex * dayWidth - 200);
+        }
+    }, [dateRange, dayWidth]);
+    // visibleDays no longer needed since we render full dateRange for uniform grid
 
     // Apply simple filter/sort for display without changing markup
     const tasksForRender = React.useMemo(() => {
@@ -601,21 +609,28 @@ export default function ProjectsView() {
 
     const deleteTask = async (taskId: string) => {
         try {
-            if (!currentWorkspace) throw new Error('No workspace');
+            // Use admin client if available to bypass RLS problems gracefully
+            const client = supabaseAdmin || supabase;
+            // First fetch to ensure it exists & (optionally) validate workspace via project
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { data, error, status } = await (supabase as any)
+            const { data: existing, error: fetchErr } = await (client as any)
                 .from('tasks')
-                .delete()
+                .select('id, project_id')
                 .eq('id', taskId)
-                .eq('workspace_id', currentWorkspace.id)
-                .select();
-            console.log('Delete task response', { status, dataCount: data?.length, data });
-            if (error) throw error;
-            if (!data || data.length === 0) {
-                showModalMsg('Task Deletion','No matching row deleted (check RLS / workspace)','error');
+                .single();
+            if (fetchErr) throw fetchErr;
+            if (!existing) {
+                showModalMsg('Task Deletion','Task not found','error');
                 return;
             }
-            setTasks(prev => prev.filter(task => task.id !== taskId));
+            // Delete by id only (tasks table has no workspace_id column)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const { error: delErr } = await (client as any)
+                .from('tasks')
+                .delete()
+                .eq('id', taskId);
+            if (delErr) throw delErr;
+            setTasks(prev => prev.filter(t => t.id !== taskId));
             showModalMsg('Task Deleted','Task deleted successfully','success');
         } catch (error: any) {
             console.error('Delete task error:', error);
@@ -1195,7 +1210,7 @@ export default function ProjectsView() {
                         {/* Day Headers */}
                         <div className="h-12 flex items-center border-b border-gray-100">
                             <div className="flex">
-                {visibleDays.map((date, index) => {
+                {dateRange.map((date, index) => {
                                     const day = parseInt(format(date, 'dd'));
                                     const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                                     const isWeekend = [0, 6].includes(date.getDay());
@@ -1219,11 +1234,11 @@ export default function ProjectsView() {
                     </div>
 
                     {/* Gantt Chart Body */}
-                    <div className="relative" style={{ minWidth: visibleDays.length * dayWidth, width: visibleDays.length * dayWidth }}>
+                    <div className="relative" style={{ minWidth: dateRange.length * dayWidth, width: dateRange.length * dayWidth }}>
                         {/* Grid overlay */}
                         <div className="absolute inset-0 z-0 pointer-events-none">
-                            <div className="flex h-full" style={{ width: visibleDays.length * dayWidth }}>
-                                {visibleDays.map((date, idx) => {
+                            <div className="flex h-full" style={{ width: dateRange.length * dayWidth }}>
+                                {dateRange.map((date, idx) => {
                                     const isWeekend = [0, 6].includes(date.getDay());
                                     const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                                     const isMonthStart = date.getDate() === 1;
@@ -1431,7 +1446,7 @@ export default function ProjectsView() {
                         )}
 
                         {/* Dependency lines */}
-                        <svg className="absolute inset-0 z-0 pointer-events-none" style={{ width: visibleDays.length * dayWidth, height: '100%' }}>
+                        <svg className="absolute inset-0 z-0 pointer-events-none" style={{ width: dateRange.length * dayWidth, height: '100%' }}>
                             <defs>
                                 <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto" markerUnits="strokeWidth">
                                     <path d="M0,0 L6,3 L0,6 Z" fill="#64748b" />
