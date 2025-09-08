@@ -1,9 +1,57 @@
 // ...existing code...
+import { useEffect, useState } from 'react';
 import { User, Bell, Shield, CreditCard, Users, Globe } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { supabaseAdmin } from '../../lib/supabase-admin';
 
 export default function SettingsView() {
   const { user, signOut } = useAuth();
+  const [displayName, setDisplayName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [email, setEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user) return;
+      try {
+        const client = supabaseAdmin || supabase;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (client as any)
+          .from('profiles')
+          .select('full_name, avatar_url, email')
+          .eq('id', user.id)
+          .single();
+        if (error) throw error;
+        setDisplayName(data?.full_name || user.user_metadata?.full_name || '');
+        setAvatarUrl(data?.avatar_url || '');
+        setEmail(data?.email || user.email || '');
+      } catch (e) {
+        console.error(e);
+        setEmail(user?.email || '');
+      }
+    };
+    load();
+  }, [user]);
+
+  const saveProfile = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      const client = supabaseAdmin || supabase;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (client as any)
+        .from('profiles')
+        .upsert({ id: user.id, full_name: displayName, avatar_url: avatarUrl, email })
+        .eq('id', user.id);
+      if (error) throw error;
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const settingsSections = [
     {
@@ -55,14 +103,19 @@ export default function SettingsView() {
         {/* User Info Card */}
         <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-teal-600 rounded-full flex items-center justify-center">
-              <User className="w-8 h-8 text-white" />
+            <div className="w-16 h-16 bg-teal-600 rounded-full flex items-center justify-center overflow-hidden">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarUrl} alt="avatar" className="w-16 h-16 object-cover" />
+              ) : (
+                <User className="w-8 h-8 text-white" />
+              )}
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                {user?.user_metadata?.first_name} {user?.user_metadata?.last_name}
+                {displayName || `${user?.user_metadata?.first_name || ''} ${user?.user_metadata?.last_name || ''}`.trim() || 'Account'}
               </h3>
-              <p className="text-gray-600">{user?.email}</p>
+              <p className="text-gray-600">{email || user?.email}</p>
               <p className="text-sm text-gray-500">Member since {new Date(user?.created_at || '').toLocaleDateString()}</p>
             </div>
           </div>
@@ -80,14 +133,29 @@ export default function SettingsView() {
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">{section.title}</h3>
                   <p className="text-gray-600 mb-4">{section.description}</p>
                   <div className="space-y-2">
-                    {section.items.map((item, itemIndex) => (
-                      <button
-                        key={itemIndex}
-                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
-                      >
-                        {item}
-                      </button>
-                    ))}
+                    {section.title === 'Profile' ? (
+                      <div className="grid gap-4">
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Display name</label>
+                          <input value={displayName} onChange={e => setDisplayName(e.target.value)} className="w-full max-w-md rounded border border-gray-300 px-3 py-2 text-sm" placeholder="Your name" />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Email</label>
+                          <input value={email} onChange={e => setEmail(e.target.value)} className="w-full max-w-md rounded border border-gray-300 px-3 py-2 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-sm text-gray-600 mb-1">Avatar URL</label>
+                          <input value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} className="w-full max-w-md rounded border border-gray-300 px-3 py-2 text-sm" placeholder="https://..." />
+                        </div>
+                        <div>
+                          <button disabled={saving} onClick={saveProfile} className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">{saving ? 'Saving…' : 'Save changes'}</button>
+                        </div>
+                      </div>
+                    ) : (
+                      section.items.map((item, itemIndex) => (
+                        <button key={itemIndex} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">{item}</button>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -99,12 +167,7 @@ export default function SettingsView() {
         <div className="bg-white rounded-lg border border-red-200 p-6 mt-6">
           <h3 className="text-lg font-semibold text-red-900 mb-4">Danger Zone</h3>
           <div className="space-y-4">
-            <button
-              onClick={signOut}
-              className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 transition-colors"
-            >
-              Sign Out
-            </button>
+            <button onClick={signOut} className="bg-red-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-red-700 transition-colors">Sign Out</button>
             <button className="bg-red-100 text-red-700 px-4 py-2 rounded-lg font-medium hover:bg-red-200 transition-colors ml-4">
               Delete Account
             </button>

@@ -1,7 +1,48 @@
-import React from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Briefcase } from 'lucide-react';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { supabase } from '../../lib/supabase';
+import { supabaseAdmin } from '../../lib/supabase-admin';
 
 export default function PortfoliosView() {
+    const { currentWorkspace } = useWorkspace();
+    const [projects, setProjects] = useState<Array<{ id: string; name: string; status: string; start_date: string | null; end_date: string | null }>>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const load = async () => {
+            if (!currentWorkspace) { setProjects([]); setLoading(false); return; }
+            setLoading(true);
+            try {
+                const client = supabaseAdmin || supabase;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data, error } = await (client as any)
+                    .from('projects')
+                    .select('id,name,status,start_date,end_date')
+                    .eq('workspace_id', currentWorkspace.id)
+                    .order('name', { ascending: true });
+                if (error) throw error;
+                setProjects(data || []);
+            } catch (e) {
+                console.error(e);
+                setProjects([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, [currentWorkspace]);
+
+    const grouped = useMemo(() => {
+        const g: Record<string, typeof projects> = {};
+        for (const p of projects) {
+            const key = p.status || 'unknown';
+            if (!g[key]) g[key] = [];
+            g[key].push(p);
+        }
+        return g;
+    }, [projects]);
+
     return (
         <div className="p-6">
             <div className="text-center py-16">
@@ -44,15 +85,34 @@ export default function PortfoliosView() {
                         <span>Project name</span>
                         <div className="flex items-center gap-16">
                             <span>Status</span>
-                            <span>Progress</span>
                             <span>Start date</span>
                             <span>End date</span>
                         </div>
                     </div>
 
-                    <div className="text-center py-8 text-gray-500">
-                        No projects in this portfolio yet
-                    </div>
+                    {loading ? (
+                        <div className="text-center py-8 text-gray-500">Loading…</div>
+                    ) : projects.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500">No projects found</div>
+                    ) : (
+                        Object.entries(grouped).map(([status, list]) => (
+                            <div key={status}>
+                                <div className="text-xs uppercase text-gray-500 font-semibold mt-6 mb-2">{status.replace('_', ' ')}</div>
+                                <div className="divide-y divide-gray-100">
+                                    {list.map((p) => (
+                                        <div key={p.id} className="flex items-center justify-between py-2">
+                                            <span className="text-gray-900">{p.name}</span>
+                                            <div className="flex items-center gap-16 text-sm text-gray-600">
+                                                <span className="capitalize">{p.status?.replace('_', ' ') || '—'}</span>
+                                                <span>{p.start_date ? new Date(p.start_date).toLocaleDateString() : '—'}</span>
+                                                <span>{p.end_date ? new Date(p.end_date).toLocaleDateString() : '—'}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </div>
         </div>

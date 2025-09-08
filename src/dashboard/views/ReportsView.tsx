@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft,
     X,
     BarChart3,
     MoreHorizontal
 } from 'lucide-react';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { supabaseAdmin } from '../../lib/supabase-admin';
 
 const reportTabs = [
     { id: 'all', name: 'All', active: true },
@@ -15,6 +19,64 @@ const reportTabs = [
 
 export default function ReportsView() {
     const [activeTab, setActiveTab] = useState('all');
+    const { currentWorkspace } = useWorkspace();
+    const { user } = useAuth();
+    const [projects, setProjects] = useState<Array<{ id: string; status: string }>>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const load = async () => {
+            if (!currentWorkspace || !user) {
+                setProjects([]);
+                setLoading(false);
+                return;
+            }
+            setLoading(true);
+            try {
+                const client = supabaseAdmin || supabase;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data, error } = await (client as any)
+                    .from('projects')
+                    .select('id,status')
+                    .eq('workspace_id', currentWorkspace.id);
+                if (error) throw error;
+                setProjects(data || []);
+            } catch (e) {
+                console.error(e);
+                setProjects([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, [currentWorkspace, user]);
+
+    const statusCounts = useMemo(() => {
+        const counts: Record<string, number> = { planning: 0, active: 0, on_hold: 0, completed: 0, cancelled: 0 };
+        projects.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
+        return counts;
+    }, [projects]);
+
+    const total = useMemo(() => projects.length || 1, [projects.length]);
+    const circumference = 2 * Math.PI * 40;
+    const segments = useMemo(() => {
+        // Map statuses to colors
+        const parts = [
+            { key: 'active', color: '#10B981' },
+            { key: 'on_hold', color: '#F59E0B' },
+            { key: 'completed', color: '#3B82F6' },
+            { key: 'planning', color: '#9CA3AF' },
+            { key: 'cancelled', color: '#6B7280' },
+        ] as const;
+        let offset = 0;
+        return parts.map(p => {
+            const fraction = (statusCounts[p.key] || 0) / total;
+            const dash = fraction * circumference;
+            const seg = { color: p.color, dasharray: `${dash} ${circumference}`, dashoffset: -offset };
+            offset += dash;
+            return seg;
+        });
+    }, [statusCounts, total]);
 
     return (
         <div className="h-full flex flex-col bg-white">
@@ -48,8 +110,8 @@ export default function ReportsView() {
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                                    ? 'border-blue-500 text-blue-600'
+                                    : 'border-transparent text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             {tab.name}
@@ -58,10 +120,10 @@ export default function ReportsView() {
                 </div>
             </div>
 
-            {/* Main Content */}
+        {/* Main Content */}
             <div className="flex-1 p-6">
                 <div className="mb-6">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-1">PROGRESS</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Project status</h2>
                 </div>
 
                 <div className="grid lg:grid-cols-2 gap-8">
@@ -121,84 +183,34 @@ export default function ReportsView() {
                             {/* Pie Chart */}
                             <div className="relative w-48 h-48">
                                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                                    {/* Gray segment (42%) */}
-                                    <circle
-                                        cx="50"
-                                        cy="50"
-                                        r="40"
-                                        fill="none"
-                                        stroke="#9CA3AF"
-                                        strokeWidth="20"
-                                        strokeDasharray="105.1 251.3"
-                                        strokeDashoffset="0"
-                                    />
-                                    {/* Green segment (26%) */}
-                                    <circle
-                                        cx="50"
-                                        cy="50"
-                                        r="40"
-                                        fill="none"
-                                        stroke="#10B981"
-                                        strokeWidth="20"
-                                        strokeDasharray="65.3 251.3"
-                                        strokeDashoffset="-105.1"
-                                    />
-                                    {/* Orange segment (18%) */}
-                                    <circle
-                                        cx="50"
-                                        cy="50"
-                                        r="40"
-                                        fill="none"
-                                        stroke="#F59E0B"
-                                        strokeWidth="20"
-                                        strokeDasharray="45.2 251.3"
-                                        strokeDashoffset="-170.4"
-                                    />
-                                    {/* Blue segment (14%) */}
-                                    <circle
-                                        cx="50"
-                                        cy="50"
-                                        r="40"
-                                        fill="none"
-                                        stroke="#3B82F6"
-                                        strokeWidth="20"
-                                        strokeDasharray="35.2 251.3"
-                                        strokeDashoffset="-215.6"
-                                    />
+                                    {segments.map((s, idx) => (
+                                        <circle key={idx} cx="50" cy="50" r="40" fill="none" stroke={s.color} strokeWidth="20" strokeDasharray={s.dasharray} strokeDashoffset={s.dashoffset} />
+                                    ))}
                                 </svg>
 
                                 {/* Center percentages */}
                                 <div className="absolute inset-0 flex items-center justify-center">
                                     <div className="text-center">
-                                        <div className="text-2xl font-bold text-gray-900">42%</div>
+                                        <div className="text-2xl font-bold text-gray-900">{loading ? '...' : projects.length}</div>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Legend */}
                             <div className="absolute right-0 top-1/2 transform -translate-y-1/2 space-y-3">
-                                <div className="flex items-center gap-2 text-sm">
-                                    <div className="w-3 h-3 bg-gray-400 rounded-sm"></div>
-                                    <span className="text-gray-700">No status</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <div className="w-3 h-3 bg-amber-500 rounded-sm"></div>
-                                    <span className="text-gray-700">On track</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <div className="w-3 h-3 bg-blue-500 rounded-sm"></div>
-                                    <span className="text-gray-700">At risk</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-sm">
-                                    <div className="w-3 h-3 bg-green-500 rounded-sm"></div>
-                                    <span className="text-gray-700">Off track</span>
-                                </div>
+                                {[
+                                    { label: 'Active', color: 'bg-emerald-500', key: 'active' },
+                                    { label: 'On hold', color: 'bg-amber-500', key: 'on_hold' },
+                                    { label: 'Completed', color: 'bg-blue-500', key: 'completed' },
+                                    { label: 'Planning', color: 'bg-gray-400', key: 'planning' },
+                                    { label: 'Cancelled', color: 'bg-gray-500', key: 'cancelled' },
+                                ].map(({ label, color, key }) => (
+                                    <div key={key} className="flex items-center gap-2 text-sm">
+                                        <div className={`w-3 h-3 ${color} rounded-sm`}></div>
+                                        <span className="text-gray-700">{label} ({statusCounts[key] || 0})</span>
+                                    </div>
+                                ))}
                             </div>
-
-                            {/* Percentage labels on chart */}
-                            <div className="absolute top-8 right-16 text-sm font-semibold text-white">26%</div>
-                            <div className="absolute bottom-12 right-20 text-sm font-semibold text-white">18%</div>
-                            <div className="absolute bottom-16 left-16 text-sm font-semibold text-white">14%</div>
                         </div>
                     </div>
                 </div>
