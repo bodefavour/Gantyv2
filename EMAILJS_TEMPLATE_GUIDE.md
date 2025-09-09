@@ -92,6 +92,42 @@ You've been invited: {{target_name}} on GanttPro
 </html>
 ```
 
+### Simplified Template (No Conditionals)
+Use this if the workspace or project name isn't rendering (some EmailJS plans ignore `{{#var}}` blocks). Your code already sets `target_name` to just the workspace name or `Workspace • Project`.
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Invitation – {{target_name}}</title>
+</head>
+<body style="font-family:Arial,sans-serif;max-width:620px;margin:0 auto;padding:24px;color:#1f2937;line-height:1.55;">
+    <h1 style="margin:0 0 24px;font-size:22px;color:#0d9488;">GanttPro Invitation</h1>
+    <p style="margin:0 0 16px;">Hi {{to_name}},</p>
+    <p style="margin:0 0 16px;">
+        <strong>{{inviter_name}}</strong> has invited you to join <strong>{{target_name}}</strong>
+        as a <strong>{{role}}</strong>.
+    </p>
+    <p style="margin:0 0 20px;">Click the button below to accept and get started.</p>
+    <p style="text-align:center;margin:32px 0;">
+        <a href="{{accept_url}}" style="background:#0d9488;color:#fff;text-decoration:none;padding:12px 28px;border-radius:6px;font-weight:600;display:inline-block;">Accept Invitation</a>
+    </p>
+    <p style="margin:0 0 12px;font-size:14px;color:#374151;">This link expires in <strong>{{expires_in}}</strong>.</p>
+    <p style="font-size:12px;color:#6b7280;word-break:break-all;">
+        If the button doesn't work, paste this URL in your browser:<br />
+        {{accept_url}}
+    </p>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0;" />
+    <p style="font-size:12px;color:#9ca3af;">
+        Sent by {{inviter_name}} • {{target_name}}<br />If you didn't expect this invitation, you can ignore it.
+    </p>
+</body>
+</html>
+```
+
+If this simplified version works but the conditional one does not, keep using `target_name` only.
+
 ## Template Variables (Parameters)
 
 Make sure your EmailJS template includes these variables:
