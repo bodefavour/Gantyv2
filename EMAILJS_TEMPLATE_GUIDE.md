@@ -8,9 +8,19 @@
 
 ## Email Template Structure
 
-### Subject Line:
+### Subject Line (workspace only):
 ```
 You're invited to join {{workspace_name}} on GanttPro
+```
+
+### Subject Line (project-specific invite):
+```
+You're invited to collaborate on {{project_name}} ({{workspace_name}})
+```
+
+If you prefer a single universal subject line, use:
+```
+You've been invited: {{target_name}} on GanttPro
 ```
 
 ### Email Body (HTML):
@@ -20,7 +30,7 @@ You're invited to join {{workspace_name}} on GanttPro
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invitation to {{workspace_name}}</title>
+    <title>Invitation to {{target_name}}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
     
@@ -29,11 +39,26 @@ You're invited to join {{workspace_name}} on GanttPro
     </div>
     
     <div style="background: #f8fafc; border-radius: 8px; padding: 30px; margin-bottom: 20px;">
-        <h2 style="margin-top: 0; color: #1f2937;">You're invited to join {{workspace_name}}!</h2>
+    <h2 style="margin-top: 0; color: #1f2937;">You're invited to join {{target_name}}!</h2>
         
         <p>Hi {{to_name}},</p>
         
-        <p><strong>{{inviter_name}}</strong> has invited you to join <strong>{{workspace_name}}</strong> as a <strong>{{role}}</strong>.</p>
+                <!-- Context paragraph (project-aware) -->
+                <p>
+                        <strong>{{inviter_name}}</strong> has invited you to join
+                        <!-- If project invite -->
+                        {{#project_name}}
+                            the project <strong>{{project_name}}</strong> in workspace <strong>{{workspace_name}}</strong>
+                        {{/project_name}}
+                        <!-- If workspace only (EmailJS lacks full logic; fallback handled by leaving project_name empty) -->
+                        {{^project_name}}
+                            the workspace <strong>{{workspace_name}}</strong>
+                        {{/project_name}}
+                        as a <strong>{{role}}</strong>.
+                </p>
+
+                <!-- If your EmailJS plan does NOT support Mustache conditionals, replace the above block with this simpler dynamic line: -->
+                <!-- <p><strong>{{inviter_name}}</strong> has invited you to join <strong>{{target_name}}</strong> as a <strong>{{role}}</strong>.</p> -->
         
         <p>GanttPro helps teams plan, track, and collaborate on projects with powerful Gantt charts and task management tools.</p>
         
@@ -59,6 +84,7 @@ You're invited to join {{workspace_name}} on GanttPro
     <div style="text-align: center; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 20px;">
         <p>
             This invitation was sent by {{inviter_name}} from {{workspace_name}}<br>
+            {{#project_name}}Project: {{project_name}}<br>{{/project_name}}
             If you didn't expect this invitation, you can safely ignore this email.
         </p>
     </div>
@@ -79,6 +105,8 @@ Make sure your EmailJS template includes these variables:
 | `{{inviter_name}}` | Person sending the invitation | `Jane Smith` |
 | `{{accept_url}}` | Link to accept the invitation | `https://yourapp.com/invite/accept/token123` |
 | `{{expires_in}}` | Expiration timeframe | `7 days` |
+| `{{project_name}}` | (Optional) Project name if invite is project-scoped | `Website Redesign` |
+| `{{target_name}}` | Combined label (workspace or workspace • project) for universal templates | `Acme Corp • Website Redesign` |
 
 ## EmailJS Configuration Steps
 
@@ -104,6 +132,13 @@ VITE_EMAILJS_TEMPLATE_ID=template_xxxxxxx
 VITE_EMAILJS_PUBLIC_KEY=your_public_key_here
 ```
 
+## Handling Project vs Workspace Invites
+
+Because EmailJS basic templates don't offer full conditional logic, you have two approaches:
+
+1. Simple (recommended): Use only `{{target_name}}` everywhere. Your hook already sets it to either `Workspace Name` or `Workspace Name • Project Name`.
+2. Enhanced (if Mustache helpers supported in your plan): Keep both `{{workspace_name}}` and `{{project_name}}` and use the conditional blocks shown in the HTML ( `{{#project_name}} ... {{/project_name}}` ). When `project_name` is empty, the block won't render.
+
 ## Testing the Template
 
 After setup, test by:
@@ -115,6 +150,8 @@ After setup, test by:
 ## Troubleshooting
 
 - **Email not sending**: Check service configuration and API limits
-- **Variables not populating**: Ensure template variables match exactly
+- **Variables not populating**: Ensure template variables match exactly (no extra spaces / casing)
 - **Formatting issues**: Test with EmailJS template preview
 - **Blocked emails**: Check spam folder and sender reputation
+- **Project name missing**: Confirm the invite was triggered with a projectId and the project exists in the `projects` table.
+- **Fallback showing combined label twice**: If you use only `{{target_name}}`, remove individual workspace/project lines from the footer.
