@@ -82,36 +82,67 @@ export function useInvitations() {
 
       if (error) throw error;
 
-      // Send email via EmailJS - hardcoded config for development
-      const emailParams = {
-        to_email: email,
-        to_name: email.split('@')[0],
-        workspace_name: currentWorkspace.name,
-        role: role,
-        inviter_name: user.data.user.user_metadata?.full_name || user.data.user.email,
-        accept_url: `${window.location.origin}/invite/accept/${token}`,
-        expires_in: '7 days'
-      };
-
-      // Hardcoded EmailJS configuration - replace with your actual values
-      const EMAILJS_SERVICE_ID = 'service_your_id';
-      const EMAILJS_TEMPLATE_ID = 'template_your_id';  
-      const EMAILJS_PUBLIC_KEY = 'your_public_key';
-
-      try {
-        await emailjs.send(
-          EMAILJS_SERVICE_ID,
-          EMAILJS_TEMPLATE_ID,
-          emailParams,
-          EMAILJS_PUBLIC_KEY
-        );
-      } catch (emailError) {
-        console.warn('Email sending failed, but invitation was created:', emailError);
-        // Continue anyway - invitation was saved to database
+      // Optionally fetch project name if this is a project-level invite
+      let projectName: string | null = null;
+      if (projectId) {
+        try {
+          const { data: projectRow } = await (supabase as any)
+            .from('projects')
+            .select('name')
+            .eq('id', projectId)
+            .single();
+          projectName = projectRow?.name || null;
+        } catch (e) {
+          console.warn('Could not fetch project name for invitation:', e);
+        }
       }
 
+      // Build parameters for email + link regardless of email success
+      const invitationLink = `${window.location.origin}/invite/accept/${token}`;
+
+      let emailSent = false;
+      let emailError: string | null = null;
+
+      // Attempt direct client EmailJS send (Edge Function blocked by EmailJS policy)
+      try {
+        const EMAILJS_SERVICE_ID = 'service_id8n5g1';
+        const EMAILJS_TEMPLATE_ID = 'template_gm44c2o';
+        const EMAILJS_PUBLIC_KEY = 'TWcCfA8uDBfcQUXX3'; // Provided public key
+
+    await emailjs.send(
+          EMAILJS_SERVICE_ID,
+          EMAILJS_TEMPLATE_ID,
+          {
+            to_email: email,
+            to_name: email.split('@')[0],
+            workspace_name: currentWorkspace.name,
+      project_name: projectName || '',
+      // Convenience combined label for templates (e.g., "Workspace • Project")
+      target_name: projectName ? `${currentWorkspace.name} • ${projectName}` : currentWorkspace.name,
+            role: role,
+            inviter_name: user.data.user.user_metadata?.full_name || user.data.user.email,
+            accept_url: invitationLink,
+            expires_in: '7 days'
+          },
+          EMAILJS_PUBLIC_KEY
+        );
+        emailSent = true;
+      } catch (e) {
+        console.warn('EmailJS client send failed:', e);
+        emailError = e instanceof Error ? e.message : 'Email send failed';
+      }
+
+      const result = {
+        ...data,
+        emailSent,
+        emailError,
+    invitationLink,
+    projectName,
+    workspaceName: currentWorkspace.name
+      };
+      
       setInvitations(prev => [data, ...prev]);
-      return data;
+      return result;
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to send invitation';
       setError(errorMessage);

@@ -14,6 +14,7 @@ export default function InviteUserModal({ isOpen, onClose, projectId }: InviteUs
   const [role, setRole] = useState<'admin' | 'manager' | 'member' | 'viewer'>('member');
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [invitationResult, setInvitationResult] = useState<any>(null);
 
   if (!isOpen) return null;
 
@@ -23,13 +24,18 @@ export default function InviteUserModal({ isOpen, onClose, projectId }: InviteUs
 
     try {
       setSending(true);
-      await sendInvitation(email.trim(), role, projectId);
+      const result = await sendInvitation(email.trim(), role, projectId);
+      setInvitationResult(result);
       setSuccess(true);
       setEmail('');
-      setTimeout(() => {
-        setSuccess(false);
-        onClose();
-      }, 2000);
+      // Auto-close only if email sent successfully
+      if (result.emailSent) {
+        setTimeout(() => {
+          setSuccess(false);
+          setInvitationResult(null);
+          onClose();
+        }, 2000);
+      }
     } catch (error) {
       console.error('Failed to send invitation:', error);
     } finally {
@@ -41,6 +47,7 @@ export default function InviteUserModal({ isOpen, onClose, projectId }: InviteUs
     setEmail('');
     setRole('member');
     setSuccess(false);
+    setInvitationResult(null);
     onClose();
   };
 
@@ -77,13 +84,89 @@ export default function InviteUserModal({ isOpen, onClose, projectId }: InviteUs
 
         {success ? (
           <div className="text-center py-8">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-green-600" />
-            </div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-2">Invitation Sent!</h4>
-            <p className="text-gray-600 text-sm">
-              An email invitation has been sent to {email}
-            </p>
+            {!invitationResult?.emailSent ? (
+              <>
+                <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="w-8 h-8 text-yellow-600" />
+                </div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-2">Invitation Created!</h4>
+                {(invitationResult?.workspaceName || invitationResult?.projectName) && (
+                  <p className="text-xs text-gray-500 mb-3">
+                    {invitationResult?.projectName
+                      ? `Project: ${invitationResult.projectName} • Workspace: ${invitationResult.workspaceName}`
+                      : `Workspace: ${invitationResult.workspaceName}`}
+                  </p>
+                )}
+                <p className="text-gray-600 text-sm mb-4">
+                  {invitationResult?.emailError ? `Email delivery failed: ${invitationResult.emailError}` : 'Email delivery failed.'}
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Share this invitation link:</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={invitationResult?.invitationLink || ''}
+                      readOnly
+                      className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => invitationResult?.invitationLink && navigator.clipboard.writeText(invitationResult.invitationLink)}
+                      className="px-3 py-2 bg-teal-600 text-white rounded text-sm hover:bg-teal-700"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={handleClose}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Check className="w-8 h-8 text-green-600" />
+                </div>
+                <h4 className="text-lg font-semibold text-gray-900 mb-2">Invitation Sent!</h4>
+                {(invitationResult?.workspaceName || invitationResult?.projectName) && (
+                  <p className="text-xs text-gray-500 mb-3">
+                    {invitationResult?.projectName
+                      ? `Project: ${invitationResult.projectName} • Workspace: ${invitationResult.workspaceName}`
+                      : `Workspace: ${invitationResult.workspaceName}`}
+                  </p>
+                )}
+                <p className="text-gray-600 text-sm mb-4">
+                  An email invitation has been sent successfully to {email}
+                </p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Backup invitation link:</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={invitationResult?.invitationLink || ''}
+                      readOnly
+                      className="flex-1 px-3 py-2 bg-white border border-gray-300 rounded text-sm font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => invitationResult?.invitationLink && navigator.clipboard.writeText(invitationResult.invitationLink)}
+                      className="px-3 py-2 bg-teal-600 text-white rounded text-sm hover:bg-teal-700"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={handleClose}
+                  className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+                >
+                  Close
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
