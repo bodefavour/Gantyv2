@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
     FolderOpen,
@@ -25,15 +25,26 @@ const navigation = [
 export default function Sidebar() {
     const location = useLocation();
     const [daysLeft] = useState(14);
-    const [isCollapsed, setIsCollapsed] = useState(true);
-    const [hoverOpen, setHoverOpen] = useState(false);
-    const isOpen = !isCollapsed || hoverOpen;
+    const [isCollapsed, setIsCollapsed] = useState(false); // default open
+
+    // Load saved state on mount
+    useEffect(() => {
+        const storedState = localStorage.getItem('sidebarCollapsed');
+        if (storedState !== null) {
+            setIsCollapsed(storedState === 'true');
+        }
+    }, []);
+
+    // Save state when it changes
+    useEffect(() => {
+        localStorage.setItem('sidebarCollapsed', String(isCollapsed));
+    }, [isCollapsed]);
+
+    const isOpen = !isCollapsed;
 
     return (
         <div
             className={`${isOpen ? 'w-64' : 'w-16'} bg-white border-r border-gray-200 flex flex-col transition-all duration-300`}
-            onMouseEnter={() => setHoverOpen(true)}
-            onMouseLeave={() => setHoverOpen(false)}
         >
             {/* Logo and Collapse Button */}
             <div className="p-4 border-b border-gray-200">
