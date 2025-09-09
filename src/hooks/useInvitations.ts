@@ -100,6 +100,14 @@ export function useInvitations() {
       // Build parameters for email + link regardless of email success
       const invitationLink = `${window.location.origin}/invite/accept/${token}`;
 
+      // Derive a safe workspace name (fallback if blank or malformed like "'s Workspace")
+      const rawWorkspaceName = (currentWorkspace.name || '').trim();
+      const fallbackOwnerName = (user.data.user.user_metadata?.full_name || user.data.user.email.split('@')[0] || 'Your Team').trim();
+      let safeWorkspaceName = rawWorkspaceName;
+      if (!safeWorkspaceName || /^'s Workspace$/i.test(safeWorkspaceName)) {
+        safeWorkspaceName = `${fallbackOwnerName}'s Workspace`;
+      }
+
       let emailSent = false;
       let emailError: string | null = null;
 
@@ -115,10 +123,10 @@ export function useInvitations() {
           {
             to_email: email,
             to_name: email.split('@')[0],
-            workspace_name: currentWorkspace.name,
+      workspace_name: safeWorkspaceName,
       project_name: projectName || '',
-      // Convenience combined label for templates (e.g., "Workspace • Project")
-      target_name: projectName ? `${currentWorkspace.name} • ${projectName}` : currentWorkspace.name,
+      // Convenience combined label for templates (Project • Workspace) when project present
+      target_name: projectName ? `${projectName} • ${safeWorkspaceName}` : safeWorkspaceName,
             role: role,
             inviter_name: user.data.user.user_metadata?.full_name || user.data.user.email,
             accept_url: invitationLink,
@@ -136,9 +144,9 @@ export function useInvitations() {
         ...data,
         emailSent,
         emailError,
-    invitationLink,
+  invitationLink,
     projectName,
-    workspaceName: currentWorkspace.name
+  workspaceName: safeWorkspaceName
       };
       
       setInvitations(prev => [data, ...prev]);
