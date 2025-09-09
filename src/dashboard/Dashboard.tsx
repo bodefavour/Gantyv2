@@ -8,6 +8,7 @@ import ReportsView from './views/ReportsView';
 import WorkloadView from './views/WorkloadView';
 import CommunicationView from './views/CommunicationView';
 import SettingsView from './views/SettingsView';
+import BillingView from './views/BillingView';
 import TimeLogView from './views/TimeLogView';
 import TrialGate from '../components/billing/TrialGate';
 
@@ -29,6 +30,7 @@ export default function Dashboard() {
                             <Route path="/workload" element={<WorkloadView />} />
                             <Route path="/communication" element={<CommunicationView />} />
                             <Route path="/settings" element={<SettingsView />} />
+                            <Route path="/billing" element={<BillingView />} />
                         </Routes>
                     </TrialGate>
                 </main>

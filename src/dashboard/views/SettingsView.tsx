@@ -1,9 +1,11 @@
 // ...existing code...
 import { useEffect, useState } from 'react';
-import { User, Bell, Shield, CreditCard, Users, Globe } from 'lucide-react';
+import { User, CreditCard, Users, UserPlus } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { supabaseAdmin } from '../../lib/supabase-admin';
+import InviteUserModal from '../../components/modals/InviteUserModal';
+import BillingModal from '../../components/billing/BillingModal';
 
 export default function SettingsView() {
   const { user, signOut } = useAuth();
@@ -11,6 +13,8 @@ export default function SettingsView() {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showBillingModal, setShowBillingModal] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -61,34 +65,29 @@ export default function SettingsView() {
       items: ['Personal Information', 'Profile Picture', 'Password']
     },
     {
-      title: 'Notifications',
-      icon: Bell,
-      description: 'Configure how and when you receive notifications',
-      items: ['Email Notifications', 'Push Notifications', 'Project Updates']
-    },
-    {
-      title: 'Security',
-      icon: Shield,
-      description: 'Manage security settings and two-factor authentication',
-      items: ['Two-Factor Authentication', 'Session Management', 'API Keys']
+      title: 'Team Management',
+      icon: Users,
+      description: 'Manage team members and invite new users',
+      items: ['Invite Users'],
+      actions: [
+        {
+          label: 'Invite Team Member',
+          icon: UserPlus,
+          action: () => setShowInviteModal(true)
+        }
+      ]
     },
     {
       title: 'Billing',
       icon: CreditCard,
-      description: 'Manage your subscription and billing information',
-      items: ['Subscription Plan', 'Payment Methods', 'Billing History']
-    },
-    {
-      title: 'Team Management',
-      icon: Users,
-      description: 'Manage team members and workspace settings',
-      items: ['Team Members', 'Roles & Permissions', 'Workspace Settings']
-    },
-    {
-      title: 'Integrations',
-      icon: Globe,
-      description: 'Connect with external tools and services',
-      items: ['Google Workspace', 'Slack', 'Microsoft Teams']
+      description: 'Manage your subscription and payment methods',
+      items: ['Subscription Plan', 'Payment Methods'],
+      actions: [
+        {
+          label: 'Manage Billing',
+          action: () => setShowBillingModal(true)
+        }
+      ]
     }
   ];
 
@@ -152,9 +151,21 @@ export default function SettingsView() {
                         </div>
                       </div>
                     ) : (
-                      section.items.map((item, itemIndex) => (
-                        <button key={itemIndex} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">{item}</button>
-                      ))
+                      <div className="space-y-2">
+                        {section.actions?.map((action, actionIndex) => {
+                          const Icon = (action as any).icon;
+                          return (
+                            <button
+                              key={actionIndex}
+                              onClick={action.action}
+                              className="flex items-center gap-2 w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors border border-gray-200"
+                            >
+                              {Icon && <Icon className="w-4 h-4" />}
+                              {action.label}
+                            </button>
+                          );
+                        }) || <p className="text-sm text-gray-500 italic">Configuration coming soon</p>}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -173,6 +184,17 @@ export default function SettingsView() {
             </button>
           </div>
         </div>
+
+        {/* Modals */}
+        <InviteUserModal
+          isOpen={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+        />
+        
+        <BillingModal
+          isOpen={showBillingModal}
+          onClose={() => setShowBillingModal(false)}
+        />
       </div>
     </div>
   );

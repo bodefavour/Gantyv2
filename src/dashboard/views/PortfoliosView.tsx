@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { supabaseAdmin } from '../../lib/supabase-admin';
 import toast from 'react-hot-toast';
+import CreateItemModal from '../../components/modals/CreateItemModal';
 
 interface Portfolio { id: string; name: string; description: string | null; created_at: string; }
 interface Project { id: string; name: string; status: string; start_date: string; end_date: string | null; progress: number; }
@@ -16,6 +17,7 @@ export default function PortfoliosView() {
     const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
     const [projects, setProjects] = useState<Project[]>([]);
     const [portfolioProjects, setPortfolioProjects] = useState<Record<string, string[]>>({});
+    const [showCreateModal, setShowCreateModal] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -46,10 +48,9 @@ export default function PortfoliosView() {
         load();
     }, [currentWorkspace, user]);
 
-    const createPortfolio = async () => {
+    const createPortfolio = async (name: string) => {
         if (!currentWorkspace || !user) return toast.error('Workspace required');
-        const name = window.prompt('Portfolio name:');
-        if (!name) return;
+        if (!name.trim()) return;
         try {
             const client = supabaseAdmin || supabase;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,7 +75,7 @@ export default function PortfoliosView() {
                     <Briefcase className="w-5 h-5 text-gray-600" />
                     <h1 className="text-lg font-medium text-gray-900">Portfolios</h1>
                 </div>
-                <button onClick={createPortfolio} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
+                <button onClick={() => setShowCreateModal(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">
                     <Plus className="w-4 h-4" /> New portfolio
                 </button>
             </div>
@@ -86,7 +87,7 @@ export default function PortfoliosView() {
                     <div className="text-center py-20">
                         <Briefcase className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                         <p className="text-gray-600 mb-4">No portfolios yet</p>
-                        <button onClick={createPortfolio} className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 text-sm">Create your first portfolio</button>
+                        <button onClick={() => setShowCreateModal(true)} className="bg-blue-600 text-white px-5 py-2 rounded hover:bg-blue-700 text-sm">Create your first portfolio</button>
                     </div>
                 ) : (
                     <div className="space-y-6">
@@ -124,6 +125,15 @@ export default function PortfoliosView() {
                     </div>
                 )}
             </div>
+
+            {/* Create Portfolio Modal */}
+            <CreateItemModal
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                onCreate={createPortfolio}
+                title="Create Portfolio"
+                placeholder="Portfolio name..."
+            />
         </div>
     );
 }

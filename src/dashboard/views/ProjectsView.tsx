@@ -36,6 +36,9 @@ import WorkloadView from './projects/WorkloadView';
 import PeopleView from './projects/PeopleView';
 import CreateProjectModal from '../modals/CreateProjectModal';
 import TaskDetailsModal from '../modals/TaskDetailsModal';
+import InviteUserModal from '../../components/modals/InviteUserModal';
+import SearchModal from '../../components/modals/SearchModal';
+import CreateItemModal from '../../components/modals/CreateItemModal';
 
 interface Project {
     id: string;
@@ -125,6 +128,9 @@ export default function ProjectsView() {
     const [showCriticalPath, setShowCriticalPath] = useState(false);
     const [multiDragOriginals, setMultiDragOriginals] = useState<Record<string,{start:Date; end:Date}>|null>(null);
     const [taskOptions, setTaskOptions] = useState<{open:boolean; task: Task | null}>({open:false, task:null});
+    const [showInviteModal, setShowInviteModal] = useState(false);
+    const [showSearchModal, setShowSearchModal] = useState(false);
+    const [showMilestoneModal, setShowMilestoneModal] = useState(false);
 
     useEffect(() => {
         if (currentWorkspace && user) {
@@ -716,24 +722,76 @@ export default function ProjectsView() {
         }
     };
 
-    const inviteUser = async () => {
+    const inviteUser = () => {
         if (!currentWorkspace || !user) {
             showModalMsg('Workspace','Select a workspace first','error');
             return;
         }
-        const email = window.prompt('Enter email to invite:');
-        if (!email) return;
-        const role = 'member';
+        setShowInviteModal(true);
+    };
+
+    const handleSearch = (searchTerm: string) => {
+        const found = tasks.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        if (found.length === 0) {
+            showModalMsg('Search','No tasks found','error');
+        } else {
+            showModalMsg('Search',`Found ${found.length} task(s)`,'info');
+            // Could implement highlighting or filtering here
+        }
+    };
+
+    const handleCreateMilestone = async (milestoneName: string) => {
+        const targetProject = selectedProject ? projects.find(p => p.id === selectedProject) : projects[0];
+        if (!targetProject || !user) return;
         try {
-            // Use SECURITY DEFINER RPC to bypass RLS safely
+            const client = supabaseAdmin || supabase;
+            // Primary attempt direct insert
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const { error } = await (supabase as any)
-                .rpc('create_workspace_invite', { p_workspace_id: currentWorkspace.id, p_email: email, p_role: role });
+            const { data, error } = await (client as any)
+                .from('tasks')
+                .insert({
+                    workspace_id: currentWorkspace!.id,
+                    project_id: targetProject.id,
+                    name: milestoneName.trim(),
+                    description: 'Milestone',
+                    start_date: format(new Date(), 'yyyy-MM-dd'),
+                    end_date: format(new Date(), 'yyyy-MM-dd'),
+                    duration: 0,
+                    progress: 0,
+                    status: 'not_started',
+                    priority: 'high',
+                    assigned_to: null,
+                    created_by: user.id,
+                    is_milestone: true,
+                })
+                .select()
+                .single();
             if (error) throw error;
-            showModalMsg('Invite','Invitation sent','success');
-        } catch (err: any) {
-            console.error('Invite error:', err);
-            showModalMsg('Invite Error', err.message || 'Failed to send invite','error');
+            setTasks(prev => [...prev, data]);
+            showModalMsg('Milestone',`Milestone "${milestoneName}" added`,'success');
+        } catch (primaryErr:any) {
+            console.warn('Primary milestone insert failed, trying secure RPC', primaryErr);
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const { data: secureId, error: rpcError } = await (supabase as any)
+                    .rpc('create_task_secure', {
+                        p_workspace_id: currentWorkspace!.id,
+                        p_project_id: targetProject.id,
+                        p_name: milestoneName.trim(),
+                        p_start: format(new Date(), 'yyyy-MM-dd'),
+                        p_end: format(new Date(), 'yyyy-MM-dd'),
+                        p_duration: 0,
+                        p_is_milestone: true
+                    });
+                if (rpcError) throw rpcError;
+                if (secureId) {
+                    showModalMsg('Milestone',`Milestone "${milestoneName}" added`,'success');
+                    fetchTasks();
+                }
+            } catch (secureErr:any) {
+                console.error('Secure milestone creation also failed:', secureErr);
+                showModalMsg('Milestone Error', secureErr.message || 'Failed to create milestone','error');
+            }
         }
     };
 
@@ -787,18 +845,7 @@ export default function ProjectsView() {
                             New Project
                         </button>
                         <button 
-                            onClick={() => {
-                                const searchTerm = window.prompt('Search tasks by name:');
-                                if (searchTerm) {
-                                    const found = tasks.filter(t => t.name.toLowerCase().includes(searchTerm.toLowerCase()));
-                                    if (found.length === 0) {
-                                        showModalMsg('Search','No tasks found','error');
-                                    } else {
-                                        showModalMsg('Search',`Found ${found.length} task(s)`,'info');
-                                        // Could implement highlighting or filtering here
-                                    }
-                                }
-                            }}
+                            onClick={() => setShowSearchModal(true)}
                             className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
                             title="Search tasks"
                         >
@@ -976,12 +1023,7 @@ export default function ProjectsView() {
                             <div className="p-8 text-center">
                                 <p className="text-gray-500 mb-4">No projects found</p>
                                 <button
-                                    onClick={() => {
-                                        const projectName = prompt('Enter project name:');
-                                        if (projectName) {
-                                            createProject(projectName);
-                                        }
-                                    }}
+                                    onClick={() => setShowCreateProjectModal(true)}
                                     className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors mx-auto"
                                 >
                                     <Plus className="w-4 h-4" />
@@ -1109,69 +1151,7 @@ export default function ProjectsView() {
                                         )}
                                     </div>
                                     <button 
-                                        onClick={async () => {
-                                            const milestoneName = window.prompt('Milestone name:');
-                                            if (!milestoneName) return;
-                                            const targetProject = selectedProject ? projects.find(p => p.id === selectedProject) : projects[0];
-                                            if (!targetProject || !user) return;
-                                            try {
-                                                const client = supabaseAdmin || supabase;
-                                                // Primary attempt direct insert
-                                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                const { data, error } = await (client as any)
-                                                    .from('tasks')
-                                                    .insert({
-                                                        workspace_id: currentWorkspace!.id,
-                                                        project_id: targetProject.id,
-                                                        name: milestoneName.trim(),
-                                                        description: 'Milestone',
-                                                        start_date: format(new Date(), 'yyyy-MM-dd'),
-                                                        end_date: format(new Date(), 'yyyy-MM-dd'),
-                                                        duration: 0,
-                                                        progress: 0,
-                                                        status: 'not_started',
-                                                        priority: 'high',
-                                                        assigned_to: null,
-                                                        created_by: user.id,
-                                                        is_milestone: true,
-                                                    })
-                                                    .select()
-                                                    .single();
-                                                if (error) throw error;
-                                                setTasks(prev => [...prev, data]);
-                                                showModalMsg('Milestone',`Milestone "${milestoneName}" added`,'success');
-                                            } catch (primaryErr:any) {
-                                                console.warn('Primary milestone insert failed, trying secure RPC', primaryErr);
-                                                try {
-                                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                    const { data: secureId, error: rpcError } = await (supabase as any)
-                                                        .rpc('create_task_secure', {
-                                                            p_workspace_id: currentWorkspace!.id,
-                                                            p_project_id: targetProject.id,
-                                                            p_name: milestoneName.trim(),
-                                                            p_start: format(new Date(), 'yyyy-MM-dd'),
-                                                            p_end: format(new Date(), 'yyyy-MM-dd'),
-                                                            p_duration: 0,
-                                                            p_is_milestone: true
-                                                        });
-                                                    if (rpcError) throw rpcError;
-                                                    if (secureId) {
-                                                        // refetch that row
-                                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                        const { data: row, error: rowErr } = await (supabase as any)
-                                                            .from('tasks')
-                                                            .select('*')
-                                                            .eq('id', secureId)
-                                                            .single();
-                                                        if (!rowErr && row) setTasks(prev => [...prev, row]);
-                                                        showModalMsg('Milestone',`Milestone "${milestoneName}" added (secure)`,'success');
-                                                    }
-                                                } catch (rpcErr:any) {
-                                                    console.error('Secure milestone creation failed', rpcErr);
-                                                    showModalMsg('Milestone Error', rpcErr.message || 'Failed to add milestone','error');
-                                                }
-                                            }
-                                        }}
+                                        onClick={() => setShowMilestoneModal(true)}
                                         className="flex items-center gap-2 text-blue-600 hover:text-blue-700 transition-colors text-sm"
                                     >
                                         <Plus className="w-4 h-4" />
@@ -1657,6 +1637,32 @@ export default function ProjectsView() {
                     </div>
                 </div>
             )}
+            
+            {/* Invite User Modal */}
+            <InviteUserModal
+                isOpen={showInviteModal}
+                onClose={() => setShowInviteModal(false)}
+                projectId={selectedProject || undefined}
+            />
+
+            {/* Search Modal */}
+            <SearchModal
+                isOpen={showSearchModal}
+                onClose={() => setShowSearchModal(false)}
+                onSearch={handleSearch}
+                placeholder="Search tasks, projects, or milestones..."
+                title="Search"
+            />
+
+            {/* Milestone Creation Modal */}
+            <CreateItemModal
+                isOpen={showMilestoneModal}
+                onClose={() => setShowMilestoneModal(false)}
+                onSubmit={handleCreateMilestone}
+                title="Create Milestone"
+                placeholder="Milestone name..."
+                submitText="Create Milestone"
+            />
         </div>
     );
 }

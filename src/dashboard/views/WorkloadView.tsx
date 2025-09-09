@@ -14,6 +14,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { supabaseAdmin } from '../../lib/supabase-admin';
 import toast from 'react-hot-toast';
+import NotificationModal from '../../components/modals/NotificationModal';
 
 type Member = {
     id: string; // workspace_members.id
@@ -40,6 +41,13 @@ export default function WorkloadView() {
     const [members, setMembers] = useState<Member[]>([]);
     const [tasks, setTasks] = useState<Task[]>([]);
     const [currentMonth] = useState(new Date());
+    const [showNotificationModal, setShowNotificationModal] = useState(false);
+    const [notificationMessage, setNotificationMessage] = useState('');
+
+    const showNotification = (message: string) => {
+        setNotificationMessage(message);
+        setShowNotificationModal(true);
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -169,7 +177,7 @@ export default function WorkloadView() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button onClick={() => alert('Filter panel coming soon')} className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 hover:text-gray-900 transition-colors border border-gray-300 rounded">
+                        <button onClick={() => showNotification('Filter panel coming soon')} className="flex items-center gap-2 px-3 py-1 text-sm text-gray-600 hover:text-gray-900 transition-colors border border-gray-300 rounded">
                             <Filter className="w-4 h-4" />
                             Filter
                         </button>
@@ -306,6 +314,15 @@ export default function WorkloadView() {
                     </div>
                 </div>
             </div>
+
+            {/* Notification Modal */}
+            <NotificationModal
+                isOpen={showNotificationModal}
+                onClose={() => setShowNotificationModal(false)}
+                title="Information"
+                message={notificationMessage}
+                type="info"
+            />
         </div>
     );
 }

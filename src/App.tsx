@@ -9,6 +9,7 @@ import LoginPage from './auth/LoginPage';
 import OnboardingFlow from './components/onboarding/OnboardingFlow';
 import Dashboard from './dashboard/Dashboard';
 import ProtectedRoute from './auth/ProtectedRoute';
+import AcceptInvitePage from './components/invitations/AcceptInvitePage';
 import { useAuth } from './contexts/AuthContext';
 
 function OnboardingWrapper() {
@@ -49,6 +50,7 @@ function App() {
               <Route path="/signup" element={<SignupPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/onboarding" element={<OnboardingWrapper />} />
+              <Route path="/invite/accept/:token" element={<AcceptInvitePage />} />
               <Route
                 path="/dashboard/*"
                 element={

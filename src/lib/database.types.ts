@@ -308,23 +308,25 @@ export interface Database {
                     id: string;
                     workspace_id: string;
                     email: string;
-                    role: 'admin' | 'member' | 'viewer';
+                    role: 'viewer' | 'editor' | 'admin';
                     invited_by: string;
-                    status: 'pending' | 'accepted' | 'declined';
+                    status: 'pending' | 'accepted' | 'expired' | 'cancelled';
                     token: string;
                     expires_at: string;
                     created_at: string;
+                    updated_at: string;
                 };
                 Insert: {
                     workspace_id: string;
                     email: string;
-                    role: 'admin' | 'member' | 'viewer';
+                    role: 'viewer' | 'editor' | 'admin';
                     invited_by: string;
                     token: string;
                     expires_at: string;
+                    status?: 'pending' | 'accepted' | 'expired' | 'cancelled';
                 };
                 Update: {
-                    status?: 'pending' | 'accepted' | 'declined';
+                    status?: 'pending' | 'accepted' | 'expired' | 'cancelled';
                 };
             };
             comments: {

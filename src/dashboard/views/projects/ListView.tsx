@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Plus, Settings, Filter, Download, MoreHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
+import NotificationModal from '../../../components/modals/NotificationModal';
 
 interface Task {
     id: string;
@@ -29,6 +30,13 @@ export default function ListView({ tasks, onAddTask, onAddMilestone }: ListViewP
     const [showFilters, setShowFilters] = useState(false);
     const [showCustomFields, setShowCustomFields] = useState(false);
     const [search, setSearch] = useState('');
+    const [showNotificationModal, setShowNotificationModal] = useState(false);
+    const [notificationMessage, setNotificationMessage] = useState('');
+
+    const showNotification = (message: string) => {
+        setNotificationMessage(message);
+        setShowNotificationModal(true);
+    };
 
     const filtered = tasks.filter(t => t.name.toLowerCase().includes(search.toLowerCase()));
     const getStatusColor = (status: string) => {
@@ -176,12 +184,7 @@ export default function ListView({ tasks, onAddTask, onAddMilestone }: ListViewP
                                 <div className="flex items-center justify-end">
                                     <button
                                         onClick={() => {
-                                            const choice = window.prompt('1. Add subtask\n2. Convert to milestone\n3. Delete task\nEnter choice (1-3):');
-                                            if (choice === '2') {
-                                                toast('Milestone conversion pending schema feature');
-                                            } else if (choice === '3') {
-                                                toast('Delete from List view not yet wired');
-                                            }
+                                            showNotification('Task actions (subtask, milestone conversion, delete) are coming soon!');
                                         }}
                                         className="text-gray-400 hover:text-gray-600 transition-colors"
                                     >
@@ -211,6 +214,15 @@ export default function ListView({ tasks, onAddTask, onAddMilestone }: ListViewP
                     </button>
                 </div>
             </div>
+
+            {/* Notification Modal */}
+            <NotificationModal
+                isOpen={showNotificationModal}
+                onClose={() => setShowNotificationModal(false)}
+                title="Information"
+                message={notificationMessage}
+                type="info"
+            />
         </div>
     );
 }
